@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+# Create a test namespace directory.
+export OO_TEST_NS="test-ns-$$"
+
+# Check if we have capabilities first.
+if ! getcap ../oo 2>/dev/null | grep -q cap_sys_admin; then
+    echo "SKIP: requires capabilities (run: sudo ./oo init)"
+    exit 0
+fi
+
+../oo up "$OO_TEST_NS" -- sleep 0.1 2>&1 || true
+
+# Check directory was created.
+if [ -d "/var/run/oo/$OO_TEST_NS" ]; then
+    echo "namespace directory created: ok"
+
+    # Check state.ini exists.
+    if [ -f "/var/run/oo/$OO_TEST_NS/state.ini" ]; then
+        echo "state.ini exists: ok"
+        cat "/var/run/oo/$OO_TEST_NS/state.ini"
+    else
+        echo "state.ini missing: FAILED"
+    fi
+
+    # Check resolv.conf exists.
+    if [ -f "/var/run/oo/$OO_TEST_NS/resolv.conf" ]; then
+        echo "resolv.conf exists: ok"
+    else
+        echo "resolv.conf missing: FAILED"
+    fi
+
+    # Check nsswitch.conf exists.
+    if [ -f "/var/run/oo/$OO_TEST_NS/nsswitch.conf" ]; then
+        echo "nsswitch.conf exists: ok"
+    else
+        echo "nsswitch.conf missing: FAILED"
+    fi
+else
+    echo "namespace directory not created: FAILED"
+fi
+
+# Cleanup.
+sleep 0.2
+../oo down "$OO_TEST_NS" 2>&1 || true

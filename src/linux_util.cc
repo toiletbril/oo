@@ -1,0 +1,96 @@
+#include "linux_util.hh"
+
+#include <chrono>
+#include <csignal>
+#include <fcntl.h>
+#include <sys/capability.h>
+#include <thread>
+#include <unistd.h>
+
+namespace oo {
+
+namespace linux {
+
+fn get_errno_string() -> std::string { return std::strerror(errno); }
+
+fn get_error_string(int errnum) -> std::string { return std::strerror(errnum); }
+
+fn raise_capability(int cap) -> error_or<ok> {
+  trace_variables(verbosity::debug, cap);
+  cap_t caps = cap_get_proc();
+  if (caps == nullptr) {
+    return make_error("Failed to get process capabilities: " +
+                      get_errno_string());
+  }
+
+  cap_value_t cap_list[] = {static_cast<cap_value_t>(cap)};
+  if (cap_set_flag(caps, CAP_EFFECTIVE, 1, cap_list, CAP_SET) != 0) {
+    cap_free(caps);
+    return make_error("Failed to set capability flag: " + get_errno_string());
+  }
+
+  if (cap_set_proc(caps) != 0) {
+    cap_free(caps);
+    return make_error("Failed to activate capability: " + get_errno_string());
+  }
+
+  cap_free(caps);
+  return ok{};
+}
+
+fn make_linux_args(const std::vector<std::string> &args)
+    -> std::vector<const char *> {
+  std::vector<const char *> os_args;
+  os_args.reserve(args.size() + 1);
+
+  for (const std::string &arg : args)
+    os_args.push_back(arg.c_str());
+
+  os_args.push_back(nullptr);
+  return os_args;
+}
+
+fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
+  let os_args = make_linux_args(args);
+  let result = oo_linux_syscall(execvp, os_args[0],
+                                const_cast<char *const *>(os_args.data()));
+  if (result.is_err()) {
+    return result.get_error();
+  }
+  unreachable();
+}
+
+fn oo_kill(pid_t pid, int signal) -> error_or<ok> {
+  trace_variables(verbosity::debug, pid, signal);
+  unwrap(oo_linux_syscall(kill, pid, signal));
+  return ok{};
+}
+
+fn oo_sleep_ms(int milliseconds) -> error_or<ok> {
+  trace_variables(verbosity::debug, milliseconds);
+  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+  return ok{};
+}
+
+fn oo_open(const char *path, int flags) -> error_or<int> {
+  trace_variables(verbosity::debug, path, flags);
+  return oo_linux_syscall(open, path, flags);
+}
+
+fn oo_close(int fd) -> error_or<ok> {
+  trace_variables(verbosity::debug, fd);
+  unwrap(oo_linux_syscall(close, fd));
+  return ok{};
+}
+
+fn check_error_code(std::error_code ec, std::string_view context)
+    -> error_or<ok> {
+  if (ec) {
+    return make_error(std::string{context} + ": " + ec.message());
+  }
+  return ok{};
+}
+
+} // namespace linux
+
+} // namespace oo

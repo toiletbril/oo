@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+# Test IP pool allocation by creating multiple namespaces.
+export NS1="test-pool-1-$$"
+export NS2="test-pool-2-$$"
+
+# Check if we have capabilities first.
+if ! getcap ../oo 2>/dev/null | grep -q cap_sys_admin; then
+    echo "SKIP: requires capabilities (run: sudo ./oo init)"
+    exit 0
+fi
+
+# Check pool file doesn't exist or is empty initially.
+if [ -f "/var/run/oo/ip-pool.ini" ]; then
+    rm -f "/var/run/oo/ip-pool.ini"
+fi
+
+echo "creating first namespace..."
+../oo up "$NS1" -- sleep 0.1 2>&1 | grep -o "Allocated subnet: 10.0.[0-9]*.0/30" || echo "allocation failed"
+
+sleep 0.2
+
+echo "creating second namespace..."
+../oo up "$NS2" -- sleep 0.1 2>&1 | grep -o "Allocated subnet: 10.0.[0-9]*.0/30" || echo "allocation failed"
+
+sleep 0.2
+
+# Check pool file exists and has entries.
+if [ -f "/var/run/oo/ip-pool.ini" ]; then
+    echo "ip-pool.ini exists: ok"
+    echo "pool contents:"
+    grep "^[0-9]" /var/run/oo/ip-pool.ini | head -3
+else
+    echo "ip-pool.ini missing: FAILED"
+fi
+
+# Cleanup.
+../oo down "$NS1" 2>&1 > /dev/null || true
+../oo down "$NS2" 2>&1 > /dev/null || true

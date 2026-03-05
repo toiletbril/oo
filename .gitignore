@@ -1,0 +1,8 @@
+.claude
+src/o
+oo
+*.exe
+*.txt
+r.sh
+/.cache/clangd/index
+/compile_commands.json

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+export TEST_NS="test-state-$$"
+
+# Check if we have capabilities first.
+if ! getcap ../oo 2>/dev/null | grep -q cap_sys_admin; then
+    echo "SKIP: requires capabilities (run: sudo ./oo init)"
+    exit 0
+fi
+
+# Start a long-running daemon.
+../oo up "$TEST_NS" -- sleep 10 2>&1 | grep -o "Namespace '.*' is up" || echo "up failed"
+
+sleep 0.3
+
+# Verify state file has required fields.
+STATE_FILE="/var/run/oo/$TEST_NS/state.ini"
+if [ -f "$STATE_FILE" ]; then
+    echo "state file structure:"
+
+    if grep -q "^daemon_pid=" "$STATE_FILE"; then
+        echo "daemon_pid: ok"
+    else
+        echo "daemon_pid: missing"
+    fi
+
+    if grep -q "^subnet_octet=" "$STATE_FILE"; then
+        echo "subnet_octet: ok"
+    else
+        echo "subnet_octet: missing"
+    fi
+
+    if grep -q "^veth_host=" "$STATE_FILE"; then
+        echo "veth_host: ok"
+    else
+        echo "veth_host: missing"
+    fi
+
+    if grep -q "^veth_ns=" "$STATE_FILE"; then
+        echo "veth_ns: ok"
+    else
+        echo "veth_ns: missing"
+    fi
+else
+    echo "state file not created: FAILED"
+fi
+
+# Cleanup.
+../oo down "$TEST_NS" 2>&1 > /dev/null || true
