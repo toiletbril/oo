@@ -2,6 +2,8 @@ ifndef VERBOSE
 MAKEFLAGS += -s
 endif
 
+MAKE := $(MAKE) -j$(shell nproc)
+
 all: oo test
 
 oo:

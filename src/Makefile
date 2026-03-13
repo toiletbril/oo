@@ -1,4 +1,4 @@
-# make MODE=dbg/rel/prof/cosmo/cosmo_dbg
+# make MODE=dbg/asan/rel/prof
 MODE ?= dbg
 
 SOURCES := $(wildcard *.cc)
@@ -13,32 +13,13 @@ HEADERS += $(wildcard */**.hh)
 # o/$MODE/<...>.o.
 OBJECTS := $(SOURCES:%.cc=o/$(MODE)/%.o)
 
-ifeq ($(OS), Windows_NT)
-OUT := ../oo.exe
-DEVNULL := "NUL"
-else
+ifneq ($(shell uname -s),Linux)
+$(error This program does not make sense on any OS but Linux.)
+endif
+
 OUT := ../oo
-DEVNULL := "/dev/null"
-endif
-
 OO_VERSION := $(shell cat ../VERSION)
-
-ifeq ($(MODE), cosmo)
-CXX := cosmoc++
-else ifeq ($(MODE), cosmo_dbg)
-CXX := cosmoc++
-else ifeq ($(OS), Windows_NT)
-CXX := clang++
-endif
-
-ifeq ($(MODE), cosmo)
-OS_INFO := "unknown-cosmo"
-else ifeq ($(MODE), cosmo_dbg)
-OS_INFO := "unknown-cosmo-dbg"
-else
 OS_INFO := $(shell uname -rvom || echo "<no uname>")
-endif
-
 COMMIT_HASH := $(shell git rev-parse HEAD || echo "<no git>")
 
 # Remember CXXFLAGS passed to us from CLI.
@@ -78,9 +59,9 @@ CXXFLAGS := \
 	$(ENVCXXFLAGS)
 
 # Speed up the linking a bit.
-ifneq ($(shell which mold > $(DEVNULL) 2>&1),)
+ifneq ($(shell which mold > /dev/null 2>&1),)
 USE_LD := -fuse-ld=mold
-else ifneq ($(shell which lld > $(DEVNULL) 2>&1),)
+else ifneq ($(shell which lld > /dev/null 2>&1),)
 USE_LD := -fuse-ld=lld
 else
 USE_LD :=
@@ -90,60 +71,34 @@ ifeq ($(MODE), rel)
 CXXFLAGS += \
 	-s \
 	-DNDEBUG \
-	-O3
+	-static \
+	-O2
 else ifeq ($(MODE), dbg)
 CXXFLAGS += \
 	-fno-omit-frame-pointer \
+	-fsanitize=undefined \
 	-g3 \
 	-O0
-ifneq ($(OS), Windows_NT)
-ifneq ($(MODE), cosmo)
+else ifeq ($(MODE), asan)
 CXXFLAGS += \
+	-fno-omit-frame-pointer \
+	-g3 \
+	-fsanitize=undefined \
 	-fsanitize=address \
-	-fsanitize=undefined
-endif
-endif
-else ifeq ($(MODE), cosmo)
-CXXFLAGS += \
-	-mcosmo \
-	-mtiny \
-	-fexceptions \
-	-g \
-	-DNDEBUG \
-	-O3
-ifneq ($(CXX), cosmoc++)
-$(error Your CXX is "$(CXX)" instead of "cosmoc++" for MODE=cosmo)
-endif
-else ifeq ($(MODE), cosmo_dbg)
-CXXFLAGS += \
-	-mcosmo \
-	-mdbg \
-	-fexceptions \
-	-g3
-ifneq ($(CXX), cosmoc++)
-$(error Your CXX is "$(CXX)" instead of "cosmoc++" for MODE=cosmo_dbg)
-endif
+	-O0
 else ifeq ($(MODE), prof)
 CXXFLAGS += \
 	-g3 \
 	-O3
 else
-$(error Invalid MODE=$(MODE). Available modes are "dbg", "rel", "prof", "cosmo")
+$(error Invalid MODE=$(MODE). Available modes are "dbg", "asan", "rel", "prof")
 endif
 
-# Missing Windows libraries.
-ifeq ($(OS), Windows_NT)
-CXXFLAGS += \
-	-luserenv \
-	-ladvapi32
-else
-# Linux libraries
-CXXFLAGS += \
-	-lcap
-endif
+# Libraries.
+CXXFLAGS += -lcap
 
 # Making objects in o/$MODE/<...>.o
-o/$(MODE)/%.o: %.cc
+o/$(MODE)/%.o: %.cc %.hh
 	printf "\t%-42s $@\n" $<
 	$(CXX) $(CXXFLAGS) -c $< -o $(CWD)$@
 
@@ -160,13 +115,8 @@ oo: dirs
 	$(MAKE) $(OUT)
 
 install: oo
-ifneq ($(OS), Windows_NT)
 	install -m 755 $(OUT) /usr/local/bin/oo
 	echo "Installed in '/usr/local/bin/oo'."
-else
-	$(error Unable to figure out install directory for Windows. \
-			Please put '$(realpath ..)' in your PATH manually)
-endif
 
 CLANG_TIDY ?= clang-tidy
 
@@ -182,8 +132,6 @@ fmt:
 
 clean:
 	rm -rf ./o ../oo ../oo.exe
-	rm -rf ../*.ilk ../*.pdb ../*.lib # Windows
-	rm -rf ../oo.com.dbg ../oo.aarch64.elf # Cosmopolitan
 	rm -rf ../perf*
 
 .PHONY: dirs oo install tidy fmt clean
