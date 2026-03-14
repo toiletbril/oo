@@ -24,10 +24,20 @@ public:
   // Execute command in existing namespace (does not return on success)
   fn execute(const std::vector<std::string> &argv) -> error_or<ok>;
 
+  fn save() const -> error_or<ok>;
+  fn load() -> error_or<ok>;
+
+  fn get_daemon_pid() const -> pid_t { return m_daemon_pid; }
+  fn set_daemon_pid(pid_t pid) -> void { m_daemon_pid = pid; }
+
 private:
   linux_namespace &m_ns;
+  pid_t m_daemon_pid{0};
+  pid_t m_child_pid{0};
 
   fn enter_namespace(pid_t daemon_pid) -> error_or<ok>;
+
+  static constexpr const char *PID_FILE = "pids.ini";
 };
 
 } // namespace oo

@@ -1,16 +1,27 @@
 #include "cli.hh"
-#include "commands.hh"
 #include "common.hh"
+#include "constants.hh"
 #include "debug.hh"
+#include "down.hh"
 #include "error.hh"
+#include "exec.hh"
+#include "init.hh"
+#include "up.hh"
 
 namespace oo {
 
 verbosity LOGGER_VERBOSITY = verbosity::nothing;
 
 static fn entry(cli::cli &&cli) -> error_or<ok> {
-  cli.add_use_case("oo [-options] <up/down/exec/init> [-options] [args...]",
-                   "todo");
+  cli.add_use_case(
+      "oo [-options] up [-options] <namespace> [--] <daemon command>",
+      "Create namespace and start a daemon.");
+  cli.add_use_case("oo [-options] down [-options] <namespace>",
+                   "Remove namespace and shutdown the daemon.");
+  cli.add_use_case("oo [-options] exec [-options] <namespace> [--] <command>",
+                   "Execute a command inside a namespace.");
+  cli.add_use_case("oo [-options] init [-options]",
+                   "Give necessary capabilities to the oo binary.");
 
   let &flag_verbose = cli.add_flag<cli::flag_repeated_boolean>(
       'v', "\0", "Increase verbosity.");
@@ -20,15 +31,12 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
 
   let subcommand = unwrap(cli.parse_args_until_subcommand());
 
-  let v_count = flag_verbose.get_count();
-  if (v_count == 1)
-    LOGGER_VERBOSITY = verbosity::error;
-  else if (v_count == 2)
-    LOGGER_VERBOSITY = verbosity::info;
-  else if (v_count == 3)
-    LOGGER_VERBOSITY = verbosity::debug;
-  else if (v_count >= 4)
+  let verb = flag_verbose.get_count();
+
+  if (verb >= static_cast<usize>(verbosity::all))
     LOGGER_VERBOSITY = verbosity::all;
+  else
+    LOGGER_VERBOSITY = static_cast<verbosity>(verb);
 
   if (flag_help.is_enabled()) {
     cli.show_help();
@@ -39,9 +47,10 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
     return ok{};
   }
 
-  if (!subcommand.has_value())
+  if (!subcommand.has_value()) {
     return make_error(
         "Missing a subcommand. Try '--help' for more information.");
+  }
 
   trace(verbosity::debug, "Executing {}", *subcommand);
 
@@ -86,7 +95,7 @@ int main(int argc, char **argv) {
   let cli = oo::cli::cli{argc, argv};
 
   if (let r = oo::entry(std::move(cli)); r.is_err()) {
-    oo::cli::show_message("ERROR: " + r.get_error().get_owned_reason());
+    oo::cli::show_message("error: " + r.get_error().get_owned_reason());
     return 1;
   }
 

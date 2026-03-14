@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -69,9 +70,6 @@ struct t__exit_scope_help {
 #define defer                                                                  \
   const auto &concat_literal(defer__, __LINE__) = t__exit_scope_help() + [&]()
 
-/* Silence enum warnings. */
-#define enum_to_int(e) static_cast<int>(e)
-
 #define sub_sat(a, b) ((a) > (b) ? (a) - (b) : 0)
 
 /* The length of statically allocated array. */
@@ -87,5 +85,13 @@ forceinline constexpr u64 hash_string(std::string_view s) {
 }
 
 #define string_case(s) case (hash_string(s))
+
+} // namespace oo
+
+#include "error.hh"
+
+namespace oo {
+
+fn ensure_runtime_dir_exists() -> error_or<ok>;
 
 } // namespace oo

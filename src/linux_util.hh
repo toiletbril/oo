@@ -14,6 +14,8 @@ namespace oo {
 
 namespace linux {
 
+using fd = int;
+
 fn get_errno_string() -> std::string;
 fn get_error_string(int errnum) -> std::string;
 fn raise_capability(int cap) -> error_or<ok>;
@@ -41,8 +43,8 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>;
 // Helper functions for common syscalls
 fn oo_kill(pid_t pid, int signal) -> error_or<ok>;
 fn oo_sleep_ms(int milliseconds) -> error_or<ok>;
-fn oo_open(const char *path, int flags) -> error_or<int>;
-fn oo_close(int fd) -> error_or<ok>;
+fn oo_open(const char *path, int flags) -> error_or<fd>;
+fn oo_close(fd fd) -> error_or<ok>;
 
 // Helper for converting error_code to error_or
 fn check_error_code(std::error_code ec, std::string_view context)

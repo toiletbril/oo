@@ -105,7 +105,6 @@ template <class T>::std::string t__string_from_struct(const T &x) {
     }                                                                          \
   } while (0)
 
-// Helper to format a single argument with its name
 template <typename T>
 forceinline auto t__format_arg(const char *name, const T &value)
     -> ::std::string {
@@ -116,14 +115,12 @@ forceinline auto t__format_arg(const char *name, const T &value)
   }
 }
 
-// Specialization for pointer types
 template <typename T>
 forceinline auto t__format_arg(const char *name, T *value) -> ::std::string {
   if (value == nullptr) {
     return ::std::format("{} = nullptr", name);
   }
 #if defined __clang__
-  // Only use struct_to_string for actual struct/class types
   if constexpr (::std::is_class_v<T> && !::std::is_same_v<T, ::std::string>) {
     return ::std::format("{} = {} @ {}", name, struct_to_string(*value),
                          static_cast<const void *>(value));
@@ -135,7 +132,6 @@ forceinline auto t__format_arg(const char *name, T *value) -> ::std::string {
 #endif
 }
 
-// Helper to format multiple arguments
 template <typename... Args>
 forceinline auto t__format_args_impl(const char *names, Args &&...args)
     -> ::std::string {
@@ -147,7 +143,6 @@ forceinline auto t__format_args_impl(const char *names, Args &&...args)
                         ? names_view.substr(0, comma_pos)
                         : names_view;
 
-    // Trim whitespace
     while (!arg_name.empty() &&
            (arg_name.front() == ' ' || arg_name.front() == '\t'))
       arg_name.remove_prefix(1);

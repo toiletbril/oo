@@ -1,0 +1,147 @@
+#include "up.hh"
+#include "caps.hh"
+#include "cli.hh"
+#include "constants.hh"
+#include "debug.hh"
+#include "dominatrix.hh"
+#include "ip_pool.hh"
+#include "linux_namespace.hh"
+#include "network_configurator.hh"
+#include "pid_tracker.hh"
+#include "satan.hh"
+#include "signal_handler.hh"
+
+#include <filesystem>
+
+namespace oo {
+
+static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf) -> void {
+  unused(netconf.cleanup());
+
+  ip_pool pool;
+  const subnet s{netconf.get_subnet_octet()};
+  unused(pool.free(s));
+
+  let ns_path_result = ns.get_path();
+  if (!ns_path_result.is_err()) {
+    std::error_code ec;
+    std::filesystem::remove_all(ns_path_result.get_value(), ec);
+    if (ec) {
+      trace(verbosity::error, "Failed to remove namespace directory: {}",
+            ec.message());
+    } else {
+      trace(verbosity::debug, "Removed namespace directory: {}",
+            ns_path_result.get_value().string());
+    }
+  }
+}
+
+fn up(cli::cli &&cli) -> error_or<ok> {
+  cli.add_use_case(
+      "oo up [-options] <namespace> [--] <daemon> [daemon-args...]", "todo");
+
+  let &flag_dns = cli.add_flag<cli::flag_many_strings>(
+      '\0', "dns",
+      "Add an entry to resolv.conf inside the namespace. Can be "
+      "specified multiple times to add multiple DNS servers.");
+  let &flag_resolv_conf_path = cli.add_flag<cli::flag_string>(
+      '\0', "dns-file",
+      "Path to a file to mount as /etc/resolv.conf inside the namespace. "
+      "Overrides --dns if both are specified.");
+  let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
+
+  let args = unwrap(cli.parse_args());
+
+  if (flag_help.is_enabled()) {
+    cli.show_help();
+    return ok{};
+  }
+
+  if (args.empty()) {
+    return make_error(
+        "Missing namespace name. Try '--help' for more infomation.");
+  }
+
+  if (args.size() < 2) {
+    return make_error(
+        "Missing daemon command. Try '--help' for more information.");
+  }
+
+  unwrap(ensure_runtime_dir_exists());
+
+  caps::raise_ambient_capabilities();
+
+  std::string ns_name = args[0];
+  args.erase(args.begin());
+
+  linux_namespace ns{ns_name};
+
+  satan existing_satan{ns};
+  if (!existing_satan.load().is_err()) {
+    if (pid_tracker::is_alive(existing_satan.get_daemon_pid())) {
+      return make_error("Namespace '" + ns_name +
+                        "' already has a running daemon (PID " +
+                        std::to_string(existing_satan.get_daemon_pid()) + ")");
+    }
+
+    trace(verbosity::info, "Found stale namespace `{}`, cleaning up...",
+          ns_name);
+
+    network_configurator existing_netconf{ns, subnet{0}};
+    unwrap(existing_netconf.load());
+    cleanup_namespace(ns, existing_netconf);
+  }
+
+  cleanup_guard guard{};
+
+  unwrap(ns.create_dir());
+
+  let pool = ip_pool{};
+  let subnet = unwrap(pool.allocate());
+  trace(verbosity::info, "Allocated subnet: `{}`", subnet.to_string());
+
+  let netconf = network_configurator{ns, subnet};
+
+  guard.add_cleanup([&pool, &subnet]() {
+    unused(pool.free(subnet));
+  });
+
+  guard.add_cleanup([&netconf]() { unused(netconf.cleanup()); });
+  unwrap(netconf.initial_setup());
+
+  dominatrix dns(ns);
+  if (flag_resolv_conf_path.is_set()) {
+    unwrap(dns.set_dns_file(flag_resolv_conf_path.get_value()));
+  } else if (!flag_dns.is_empty()) {
+    std::vector<std::string> dns_servers;
+    for (const let &server : flag_dns.values()) {
+      dns_servers.push_back(server);
+    }
+    unwrap(dns.set_dns_servers(dns_servers));
+  }
+
+  unwrap(dns.write_configs());
+
+  let resolv_path = unwrap(dns.get_resolv_conf_path());
+  let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
+
+  satan s{ns};
+  let daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
+
+  // Move other end of veth to the namespace.
+  netconf.finish_setup(daemon_pid);
+
+  // Persist for down/exec commands.
+  s.set_daemon_pid(daemon_pid);
+  unwrap(s.save());
+  unwrap(netconf.save());
+
+  guard.disarm();
+
+  cli::show_message("Namespace `" + ns.get_name() +
+                    "` is up. Daemon PID: " + std::to_string(daemon_pid) + ".");
+
+  return ok{};
+}
+
+} // namespace oo

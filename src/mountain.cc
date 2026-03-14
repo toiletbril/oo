@@ -38,6 +38,7 @@ fn mountain::cleanup() -> error_or<ok> {
   }
 
   m_mounted_paths.clear();
+
   return ok{};
 }
 

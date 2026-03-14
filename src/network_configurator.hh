@@ -7,7 +7,6 @@
 #include "netfilterer.hh"
 #include "netlinker.hh"
 
-#include <memory>
 #include <string>
 
 namespace oo {
@@ -24,16 +23,21 @@ public:
   fn finish_setup(pid_t daemon_pid) -> error_or<ok>;
 
   // Cleanup network resources.
-  fn prepare_cleanup(std::string_view veth_host) -> void;
   fn cleanup() -> error_or<ok>;
+
+  fn save() const -> error_or<ok>;
+  fn load() -> error_or<ok>;
+
+  fn get_veth_host_name() const -> std::string_view { return m_netlinker.get_veth_host_name(); }
+  fn get_veth_ns_name() const -> std::string_view { return m_netlinker.get_veth_ns_name(); }
+  fn get_subnet_octet() const -> u8 { return m_subnet.third_octet; }
+  fn get_netlinker() -> netlinker& { return m_netlinker; }
 
 private:
   linux_namespace &m_ns;
   subnet m_subnet;
-  std::unique_ptr<netlinker> m_netlinker;
-  std::unique_ptr<netfilterer> m_netfilterer;
-  std::string m_veth_host;
-  std::string m_veth_ns;
+  netlinker m_netlinker;
+  netfilterer m_netfilterer;
   std::string m_default_iface;
 
   bool m_setup_done{false};
@@ -41,7 +45,8 @@ private:
 
   fn detect_default_interface() -> error_or<std::string>;
   fn enable_ip_forward() -> error_or<ok>;
-  fn generate_veth_names() -> void;
+
+  static constexpr const char *NET_FILE = "network.ini";
 };
 
 } // namespace oo

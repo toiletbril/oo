@@ -15,8 +15,14 @@
 
 namespace oo {
 
-netlinker::netlinker(linux_namespace &ns) : m_ns(ns) {
-  m_sock = std::make_unique<netlink_socket>();
+netlinker::netlinker(linux_namespace &ns)
+    : m_ns(ns), m_sock(), m_cleaned_up(false) {
+  generate_veth_names();
+}
+
+fn netlinker::generate_veth_names() -> void {
+  m_veth_host = "veth-" + m_ns.get_name() + "-host";
+  m_veth_ns = "veth-" + m_ns.get_name() + "-ns";
 }
 
 netlinker::~netlinker() = default;
@@ -61,11 +67,11 @@ fn netlinker::create_veth_pair(std::string_view host_name,
   builder.end_nested(data);
   builder.end_nested(linkinfo);
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
   for (;;) {
-    let len = unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+    let len = unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
     struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
 
@@ -111,10 +117,10 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
   std::memcpy(RTA_DATA(rta), &target_pid, sizeof(pid_t));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -170,10 +176,10 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
   std::memcpy(RTA_DATA(rta), &addr, sizeof(struct in_addr));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -237,10 +243,10 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   std::memcpy(RTA_DATA(rta), &gw, sizeof(struct in_addr));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -275,10 +281,10 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok> {
   req.i.ifi_flags = IFF_UP;
   req.i.ifi_change = IFF_UP;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -313,10 +319,10 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok> {
   req.i.ifi_flags = 0;
   req.i.ifi_change = IFF_UP;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -348,10 +354,10 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
   req.i.ifi_family = AF_UNSPEC;
   req.i.ifi_index = ifindex;
 
-  unwrap(m_sock->send_message(&req, req.n.nlmsg_len));
+  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
   char resp_buf[4096];
-  unwrap(m_sock->recv_message(resp_buf, sizeof(resp_buf)));
+  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
   if (resp->nlmsg_type == NLMSG_ERROR) {
@@ -365,6 +371,25 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
 
   trace(verbosity::info, "Deleted link `{}`", ifname);
 
+  return ok{};
+}
+
+fn netlinker::cleanup() -> error_or<ok> {
+  if (m_cleaned_up) {
+    return ok{};
+  }
+  m_cleaned_up = true;
+
+  if (!m_sock.is_open()) {
+    trace(verbosity::debug, "Socket closed, skipping veth deletion");
+    return ok{};
+  }
+
+  let del_result = delete_link(m_veth_host);
+  if (del_result.is_err()) {
+    trace(verbosity::debug, "Failed to delete veth (may not exist): {}",
+          del_result.get_error().get_reason());
+  }
   return ok{};
 }
 

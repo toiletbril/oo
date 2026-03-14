@@ -1,12 +1,13 @@
 #include "signal_handler.hh"
-#include "commands.hh"
+#include "constants.hh"
 #include "debug.hh"
+#include "linux_util.hh"
 
 #include <cstdlib>
 
 namespace oo {
 
-fn signal_handler::setup() -> void {
+cleanup_guard::cleanup_guard() {
   struct sigaction sa{};
   sa.sa_handler = handle_signal;
   sigemptyset(&sa.sa_mask);
@@ -16,55 +17,52 @@ fn signal_handler::setup() -> void {
   unused(oo_linux_syscall(sigaction, SIGTERM, &sa, nullptr));
   unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
 
-  trace(verbosity::debug, "Signal handlers registered");
+  s_active_guard = this;
+
+  trace(verbosity::debug, "Cleanup guard armed with signal handlers");
 }
 
-fn signal_handler::register_cleanup(std::function<void()> callback) -> void {
-  s_cleanup_callback = callback;
-}
-
-fn signal_handler::set_cleanup_state(std::shared_ptr<cleanup_state> state)
-    -> void {
-  s_cleanup_state = state;
-}
-
-fn signal_handler::clear_cleanup() -> void {
-  s_cleanup_callback = nullptr;
-  s_cleanup_state = nullptr;
-}
-
-fn signal_handler::was_interrupted() -> bool {
-  return s_shutdown_requested != 0;
-}
-
-fn signal_handler::do_cleanup() -> void { cleanup_on_signal(); }
-
-void signal_handler::cleanup_on_signal() {
-  if (s_cleanup_state && s_cleanup_state->ns) {
-    trace(verbosity::info, "Cleaning up network interfaces...");
-    cleanup_namespace(*s_cleanup_state->ns, s_cleanup_state->subnet_octet,
-                      s_cleanup_state->veth_host);
+cleanup_guard::~cleanup_guard() {
+  if (m_armed) {
+    run_cleanups();
   }
 
-  if (s_cleanup_callback) {
-    s_cleanup_callback();
+  s_active_guard = nullptr;
+}
+
+fn cleanup_guard::add_cleanup(std::function<void()> cleanup_fn) -> void {
+  trace(verbosity::debug, "Adding a cleanup function");
+  m_cleanups.push_back(cleanup_fn);
+}
+
+fn cleanup_guard::disarm() -> void {
+  m_armed = false;
+  s_active_guard = nullptr;
+  trace(verbosity::debug, "Cleanup guard disarmed");
+}
+
+fn cleanup_guard::run_cleanups() -> void {
+  trace(verbosity::info, "Running {} cleanup functions", m_cleanups.size());
+
+  // Run in reverse order (LIFO)
+  for (auto it = m_cleanups.rbegin(); it != m_cleanups.rend(); ++it) {
+    (*it)();
   }
 }
 
-fn signal_handler::trigger_shutdown() -> void {
+void cleanup_guard::handle_signal(int sig) {
   if (s_shutdown_requested) {
     return;
   }
   s_shutdown_requested = 1;
 
-  trace(verbosity::info, "Shutdown requested, cleaning up...");
-  cleanup_on_signal();
-  exit(0);
-}
-
-void signal_handler::handle_signal(int sig) {
   trace(verbosity::info, "Received signal `{}`, shutting down", sig);
-  trigger_shutdown();
+
+  if (s_active_guard) {
+    s_active_guard->run_cleanups();
+  }
+
+  exit(0);
 }
 
 } // namespace oo

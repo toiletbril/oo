@@ -2,12 +2,13 @@
 #include "commands.hh"
 #include "debug.hh"
 #include "mountain.hh"
-#include "namespace_state.hh"
 #include "netlinker.hh"
 #include "pid_tracker.hh"
 
 #include <fcntl.h>
+#include <fstream>
 #include <sched.h>
+#include <sstream>
 #include <sys/wait.h>
 
 namespace oo {
@@ -148,30 +149,87 @@ fn satan::enter_namespace(pid_t daemon_pid) -> error_or<ok> {
   return ok{};
 }
 
-fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
-  namespace_state state_obj;
-  let state = unwrap(state_obj.load(m_ns));
+fn satan::save() const -> error_or<ok> {
+  let ns_path = unwrap(m_ns.get_path());
+  let pid_path = ns_path / PID_FILE;
 
-  if (state.daemon_pid == 0) {
+  std::ofstream file(pid_path);
+  if (!file.is_open()) {
+    return make_error("Could not open PID file for writing: " +
+                      pid_path.string());
+  }
+
+  file << "# Process state\n";
+  file << "daemon_pid=" << m_daemon_pid << "\n";
+  file << "child_pid=" << m_child_pid << "\n";
+
+  if (!file.good()) {
+    return make_error("Error writing to PID file");
+  }
+
+  trace(verbosity::debug, "Saved process state to {}", pid_path.string());
+  return ok{};
+}
+
+fn satan::load() -> error_or<ok> {
+  let ns_path = unwrap(m_ns.get_path());
+  let pid_path = ns_path / PID_FILE;
+
+  std::ifstream file(pid_path);
+  if (!file.is_open()) {
+    return make_error("Could not open PID file: " + pid_path.string());
+  }
+
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#' || line[0] == ';') {
+      continue;
+    }
+
+    let eq_pos = line.find('=');
+    if (eq_pos == std::string::npos) {
+      continue;
+    }
+
+    std::string key = line.substr(0, eq_pos);
+    std::string value = line.substr(eq_pos + 1);
+
+    key.erase(0, key.find_first_not_of(" \t"));
+    key.erase(key.find_last_not_of(" \t") + 1);
+    value.erase(0, value.find_first_not_of(" \t"));
+    value.erase(value.find_last_not_of(" \t") + 1);
+
+    if (key == "daemon_pid") {
+      m_daemon_pid = std::stoi(value);
+    } else if (key == "child_pid") {
+      m_child_pid = std::stoi(value);
+    }
+  }
+
+  trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
+  return ok{};
+}
+
+fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
+  unwrap(load());
+
+  if (m_daemon_pid == 0) {
     return make_error("No daemon running in namespace '" + m_ns.get_name() +
                       "'");
   }
 
-  if (!pid_tracker::is_alive(state.daemon_pid)) {
+  if (!pid_tracker::is_alive(m_daemon_pid)) {
     trace(verbosity::error,
-          "Daemon is not running (stale PID {}). Cleaning up...",
-          state.daemon_pid);
+          "Daemon is not running (stale PID {}). Cleaning up...", m_daemon_pid);
 
-    cleanup_namespace(m_ns, state.subnet_octet, state.veth_host);
-
-    return make_error("Daemon is not running. Namespace '" + m_ns.get_name() +
-                      "' was stale and has been cleaned up");
+    return make_error("Daemon is not running in namespace '" + m_ns.get_name() +
+                      "'");
   }
 
   trace(verbosity::info, "Entering namespace '{}' (daemon PID: {})",
-        m_ns.get_name(), state.daemon_pid);
+        m_ns.get_name(), m_daemon_pid);
 
-  unwrap(enter_namespace(state.daemon_pid));
+  unwrap(enter_namespace(m_daemon_pid));
 
   trace(verbosity::info, "Executing: {}", argv[0]);
   unwrap(linux::oo_exec(argv));

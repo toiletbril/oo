@@ -1,4 +1,5 @@
 #include "netfilterer.hh"
+#include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
 
@@ -17,13 +18,13 @@ netfilterer::netfilterer(linux_namespace &ns) : m_ns(ns) {
 
 fn netfilterer::detect_backend() -> backend {
   // Prioritize iptables-legacy if available.
-  if (std::filesystem::exists("/usr/sbin/iptables-legacy") ||
-      std::filesystem::exists("/sbin/iptables-legacy")) {
+  if (std::filesystem::exists(constants::IPTABLES_LEGACY_SBIN_PATH) ||
+      std::filesystem::exists(constants::IPTABLES_LEGACY_BIN_PATH)) {
     return backend::iptables_legacy;
   }
 
-  if (std::filesystem::exists("/usr/sbin/nft") ||
-      std::filesystem::exists("/sbin/nft")) {
+  if (std::filesystem::exists(constants::NFT_SBIN_PATH) ||
+      std::filesystem::exists(constants::NFT_BIN_PATH)) {
     return backend::nftables;
   }
 
@@ -36,13 +37,14 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
 
   if (pid == 0) {
     std::vector<const char *> exec_args;
-    exec_args.push_back("iptables-legacy");
+    exec_args.push_back(constants::IPTABLES_LEGACY_CMD.data());
     for (const auto &arg : args) {
       exec_args.push_back(arg.c_str());
     }
     exec_args.push_back(nullptr);
 
-    execvp("iptables-legacy", const_cast<char *const *>(exec_args.data()));
+    execvp(constants::IPTABLES_LEGACY_CMD.data(),
+           const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
 
@@ -50,7 +52,8 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
   unwrap(oo_linux_syscall(waitpid, pid, &status, 0));
 
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    return make_error("iptables-legacy command failed");
+    return make_error(std::string{constants::IPTABLES_LEGACY_CMD} +
+                      " command failed");
   }
 
   return ok{};
@@ -61,13 +64,14 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
 
   if (pid == 0) {
     std::vector<const char *> exec_args;
-    exec_args.push_back("nft");
+    exec_args.push_back(constants::NFT_CMD.data());
     for (const auto &arg : args) {
       exec_args.push_back(arg.c_str());
     }
     exec_args.push_back(nullptr);
 
-    execvp("nft", const_cast<char *const *>(exec_args.data()));
+    execvp(constants::NFT_CMD.data(),
+           const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
 
@@ -75,7 +79,7 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
   unwrap(oo_linux_syscall(waitpid, pid, &status, 0));
 
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    return make_error("nft command failed");
+    return make_error(std::string{constants::NFT_CMD} + " command failed");
   }
 
   return ok{};
@@ -91,9 +95,9 @@ fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
     unwrap(exec_iptables({"-t", "nat", "-A", "POSTROUTING", "-s", subnet_str,
                           "-o", iface_str, "-j", "MASQUERADE"}));
 
-    m_cleanup_cmds.push_back("iptables-legacy -t nat -D POSTROUTING -s " +
-                             subnet_str + " -o " + iface_str +
-                             " -j MASQUERADE");
+    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+                             " -t nat -D POSTROUTING -s " + subnet_str +
+                             " -o " + iface_str + " -j MASQUERADE");
 
     trace(verbosity::info, "Setup NAT for {} via {}", subnet, host_iface);
   } else if (m_backend == backend::nftables) {
@@ -120,13 +124,13 @@ fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
 
     unwrap(exec_iptables({"-A", "FORWARD", "-i", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back("iptables-legacy -D FORWARD -i " + iface_str +
-                             " -j ACCEPT");
+    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+                             " -D FORWARD -i " + iface_str + " -j ACCEPT");
 
     unwrap(exec_iptables({"-A", "FORWARD", "-o", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back("iptables-legacy -D FORWARD -o " + iface_str +
-                             " -j ACCEPT");
+    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+                             " -D FORWARD -o " + iface_str + " -j ACCEPT");
 
     trace(verbosity::info, "Setup FORWARD rules for {}", host_iface);
   } else if (m_backend == backend::nftables) {
@@ -188,6 +192,7 @@ fn netfilterer::cleanup() -> error_or<ok> {
   }
 
   m_cleanup_cmds.clear();
+
   return ok{};
 }
 

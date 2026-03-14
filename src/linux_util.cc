@@ -72,12 +72,12 @@ fn oo_sleep_ms(int milliseconds) -> error_or<ok> {
   return ok{};
 }
 
-fn oo_open(const char *path, int flags) -> error_or<int> {
+fn oo_open(const char *path, int flags) -> error_or<fd> {
   trace_variables(verbosity::debug, path, flags);
   return oo_linux_syscall(open, path, flags);
 }
 
-fn oo_close(int fd) -> error_or<ok> {
+fn oo_close(fd fd) -> error_or<ok> {
   trace_variables(verbosity::debug, fd);
   unwrap(oo_linux_syscall(close, fd));
   return ok{};
