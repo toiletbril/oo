@@ -24,6 +24,8 @@ static cap_value_t CAP_LIST[] = {
     // UNSAFE: allows arbitrary UID changes;
     // needed so iptables children can setuid(0) to pass its root check
     CAP_SETUID,
+    // setns(mnt_fd, CLONE_NEWNS) requires both CAP_SYS_ADMIN and CAP_SYS_CHROOT
+    CAP_SYS_CHROOT,
     // allows dropping caps in children
     CAP_SETPCAP,
 };

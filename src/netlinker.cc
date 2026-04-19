@@ -25,7 +25,7 @@ fn netlinker::generate_veth_names() -> void {
   m_veth_ns = "veth-" + m_ns.get_name() + "-ns";
 }
 
-netlinker::~netlinker() { unused(cleanup()); }
+netlinker::~netlinker() = default;
 
 fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
   trace_variables(verbosity::debug, ifname);
@@ -378,9 +378,9 @@ fn netlinker::cleanup() -> error_or<ok> {
   if (m_cleaned_up) {
     return ok{};
   }
-  m_cleaned_up = true;
 
   if (!m_sock.is_open()) {
+    m_cleaned_up = true;
     trace(verbosity::debug, "Socket closed, skipping veth deletion");
     return ok{};
   }
@@ -391,6 +391,7 @@ fn netlinker::cleanup() -> error_or<ok> {
           del_result.get_error().get_reason());
   }
 
+  m_cleaned_up = true;
   return ok{};
 }
 

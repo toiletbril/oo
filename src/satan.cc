@@ -4,6 +4,7 @@
 #include "netlinker.hh"
 #include "pid_tracker.hh"
 
+#include <csignal>
 #include <fcntl.h>
 #include <fstream>
 #include <sched.h>
@@ -67,6 +68,13 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   };
 
   if (child_pid == 0) {
+    struct sigaction sa{};
+    sa.sa_handler = SIG_DFL;
+    sigemptyset(&sa.sa_mask);
+    unused(oo_linux_syscall(sigaction, SIGTERM, &sa, nullptr));
+    unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
+    unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
+
     unwrap(linux::oo_close(pipes[0]));
     let ret = start_daemon(m_ns);
     if (ret.is_err()) {
@@ -79,7 +87,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     }
 
     let daemon_pid = ret.get_value();
-    unused(oo_linux_syscall(write, pipes[1], "ok\n", 3));
+    let ok_msg = "ok:" + std::to_string(daemon_pid) + "\n";
+    unused(oo_linux_syscall(write, pipes[1], ok_msg.data(), ok_msg.length()));
     unwrap(linux::oo_close(pipes[1]));
 
     int status;
@@ -122,20 +131,23 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     return make_error(err_msg);
   }
 
-  insist(msg == "ok\n");
+  insist(msg.starts_with("ok:"));
+  m_child_pid = std::stoi(std::string{msg.substr(3)});
 
   trace(verbosity::info, "Daemon spawned successfully, PID: {}", child_pid);
 
   return child_pid;
 }
 
-fn satan::enter_namespace(pid_t daemon_pid) -> error_or<ok> {
-  trace_variables(verbosity::debug, daemon_pid);
-  std::string net_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
+fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
+  trace_variables(verbosity::debug, daemon_pid, inner_pid);
+  let net_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
   int net_fd = unwrap(linux::oo_open(net_ns_path.c_str(), O_RDONLY));
   defer { unused(linux::oo_close(net_fd)); };
 
-  std::string mnt_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/mnt";
+  // inner_pid unshared CLONE_NEWNS and applied bind mounts; daemon_pid did not.
+  let mnt_pid = inner_pid != 0 ? inner_pid : daemon_pid;
+  let mnt_ns_path = "/proc/" + std::to_string(mnt_pid) + "/ns/mnt";
   int mnt_fd = unwrap(linux::oo_open(mnt_ns_path.c_str(), O_RDONLY));
   defer { unused(linux::oo_close(mnt_fd)); };
 
@@ -228,7 +240,7 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
   trace(verbosity::info, "Entering namespace '{}' (daemon PID: {})",
         m_ns.get_name(), m_daemon_pid);
 
-  unwrap(enter_namespace(m_daemon_pid));
+  unwrap(enter_namespace(m_daemon_pid, m_child_pid));
 
   trace(verbosity::info, "Executing: {}", argv[0]);
   unwrap(linux::oo_exec(argv));

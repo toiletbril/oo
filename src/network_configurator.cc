@@ -2,7 +2,9 @@
 #include "constants.hh"
 #include "debug.hh"
 
+#include <fcntl.h>
 #include <fstream>
+#include <sched.h>
 #include <sstream>
 
 namespace oo {
@@ -108,9 +110,29 @@ fn network_configurator::initial_setup() -> error_or<ok> {
 fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok> {
   if (!m_initial_setup_done)
     return make_error("Initial setup not done.");
-  unwrap(m_netlinker.set_link_up(m_netlinker.get_veth_ns_name()));
+
+  // Moving an interface resets its link state, so set_link_up before the move
+  // is useless. Move first, then configure from inside the daemon namespace.
   unwrap(m_netlinker.move_to_namespace(m_netlinker.get_veth_ns_name(),
                                        daemon_pid));
+
+  int orig_ns_fd = unwrap(linux::oo_open("/proc/self/ns/net", O_RDONLY));
+  defer { unused(linux::oo_close(orig_ns_fd)); };
+
+  let daemon_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
+  int daemon_ns_fd = unwrap(linux::oo_open(daemon_ns_path.c_str(), O_RDONLY));
+  defer { unused(linux::oo_close(daemon_ns_fd)); };
+
+  unwrap(oo_linux_syscall(setns, daemon_ns_fd, CLONE_NEWNET));
+  defer { unused(oo_linux_syscall(setns, orig_ns_fd, CLONE_NEWNET)); };
+
+  netlinker ns_linker{m_ns};
+  unwrap(ns_linker.set_link_up("lo"));
+  unwrap(ns_linker.add_address(m_netlinker.get_veth_ns_name(), m_subnet.ns_ip(),
+                               constants::SUBNET_PREFIX_LEN));
+  unwrap(ns_linker.set_link_up(m_netlinker.get_veth_ns_name()));
+  unwrap(ns_linker.add_route("0.0.0.0", 0, m_subnet.host_ip()));
+
   m_setup_done = true;
   return ok{};
 }

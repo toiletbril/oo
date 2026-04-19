@@ -171,7 +171,6 @@ fn netfilterer::cleanup() -> error_or<ok> {
   if (m_cleaned_up) {
     return ok{};
   }
-  m_cleaned_up = true;
 
   if (m_backend == backend::iptables_legacy) {
     for (const auto &cmd : m_cleanup_cmds) {
@@ -211,7 +210,12 @@ fn netfilterer::cleanup() -> error_or<ok> {
         exit(1);
       } else {
         int status;
-        unwrap(oo_linux_syscall(waitpid, pid, &status, 0));
+        let wait_result = oo_linux_syscall(waitpid, pid, &status, 0);
+        if (wait_result.is_err()) {
+          trace(verbosity::error, "waitpid failed: {}",
+                wait_result.get_error().get_reason());
+          continue;
+        }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
           trace(verbosity::error, "Cleanup command failed: {}", cmd);
         }
@@ -221,6 +225,7 @@ fn netfilterer::cleanup() -> error_or<ok> {
   }
 
   m_cleanup_cmds.clear();
+  m_cleaned_up = true;
 
   return ok{};
 }

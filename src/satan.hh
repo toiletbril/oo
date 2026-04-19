@@ -35,7 +35,7 @@ private:
   pid_t m_daemon_pid{0};
   pid_t m_child_pid{0};
 
-  fn enter_namespace(pid_t daemon_pid) -> error_or<ok>;
+  fn enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>;
 
   static constexpr const char *PID_FILE = "pids.ini";
 };
