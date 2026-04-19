@@ -18,6 +18,9 @@ public:
   linux_namespace(std::string_view name) : m_name(name) {};
   ~linux_namespace();
 
+  // Validate the namespace name without touching the filesystem.
+  // Call this early (before any network setup) to fail fast on bad names.
+  fn validate_name() -> error_or<ok>;
   fn create_dir() -> error_or<ok>;
   fn is_dir_created() -> bool;
   fn unshare() -> error_or<ok>;

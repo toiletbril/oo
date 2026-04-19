@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Verify that /var/run/oo is 0755 (not world-writable) and that each
+# namespace directory is created 0700 (owner-only access).
+
+NS="dp"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+PARENT_PERMS=$(stat -c '%a' /var/run/oo)
+if [ "$PARENT_PERMS" = "755" ]; then
+    echo "/var/run/oo perms: 755 (ok)"
+else
+    echo "/var/run/oo perms: $PARENT_PERMS (FAILED)"
+fi
+
+../oo up "$NS" -- sleep 30 2>/dev/null
+
+NS_PERMS=$(stat -c '%a' "/var/run/oo/$NS")
+if [ "$NS_PERMS" = "700" ]; then
+    echo "namespace dir perms: 700 (ok)"
+else
+    echo "namespace dir perms: $NS_PERMS (FAILED)"
+fi

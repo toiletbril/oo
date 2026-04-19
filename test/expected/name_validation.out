@@ -1,0 +1,4 @@
+oo: error: Namespace name too long.*toolong
+oo: error: Namespace name must not include a slash.*fo/o
+oo: error: Namespace name contains invalid character.*fo!o
+oo: error: Namespace name must not be empty

@@ -14,21 +14,15 @@ linux_namespace::~linux_namespace() = default;
 
 // SECURITY: The namespace name is used as a filesystem path component AND as
 // part of veth interface names ("veth-<name>-host", "veth-<name>-ns").
-// Validation below is load-bearing. Do not relax without understanding:
+// Validation is load-bearing. Do not relax without understanding:
 //   1. IFNAMSIZ limit (MAX_NS_NAME_LEN = 5)
 //   2. Path traversal via '..' or special chars in the name
-fn linux_namespace::create_dir() -> error_or<ok> {
-  if (is_dir_created()) {
-    trace(verbosity::debug, "Directory already created for namespace '{}'",
-          m_name);
-    return ok{};
-  }
-
+fn linux_namespace::validate_name() -> error_or<ok> {
   if (m_name.empty()) {
     return make_error("Namespace name must not be empty.");
   }
 
-  if (get_name().find('/') != std::string::npos) {
+  if (m_name.find('/') != std::string::npos) {
     return make_error("Namespace name must not include a slash. (" + m_name +
                       ")");
   }
@@ -51,6 +45,17 @@ fn linux_namespace::create_dir() -> error_or<ok> {
   }
 
   assert(m_name.size() <= MAX_NS_NAME_LEN);
+  return ok{};
+}
+
+fn linux_namespace::create_dir() -> error_or<ok> {
+  if (is_dir_created()) {
+    trace(verbosity::debug, "Directory already created for namespace '{}'",
+          m_name);
+    return ok{};
+  }
+
+  unwrap(validate_name());
 
   std::error_code ec;
   let path = unwrap(get_path());

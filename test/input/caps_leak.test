@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Verify that the daemon process starts with no effective, inheritable,
+# or ambient capabilities after oo drops them before execvp.
+
+NS="cl"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+../oo up "$NS" -- sleep 30 2>/dev/null
+
+DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+STATUS="/proc/$DAEMON_PID/status"
+
+CAP_EFF=$(grep '^CapEff:' "$STATUS" | awk '{print $2}')
+CAP_INH=$(grep '^CapInh:' "$STATUS" | awk '{print $2}')
+CAP_AMB=$(grep '^CapAmb:' "$STATUS" | awk '{print $2}')
+
+if [ "$CAP_EFF" = "0000000000000000" ]; then
+    echo "daemon effective caps: none (ok)"
+else
+    echo "daemon effective caps: $CAP_EFF (FAILED)"
+fi
+
+if [ "$CAP_INH" = "0000000000000000" ]; then
+    echo "daemon inheritable caps: none (ok)"
+else
+    echo "daemon inheritable caps: $CAP_INH (FAILED)"
+fi
+
+if [ "$CAP_AMB" = "0000000000000000" ]; then
+    echo "daemon ambient caps: none (ok)"
+else
+    echo "daemon ambient caps: $CAP_AMB (FAILED)"
+fi

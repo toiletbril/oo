@@ -49,6 +49,9 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   linux_namespace ns{ns_name};
 
+  // Validate name before allocating any resources so the error is immediate.
+  unwrap(ns.validate_name());
+
   satan existing_satan{ns};
   if (!existing_satan.load().is_err()) {
     if (pid_tracker::is_alive(existing_satan.get_daemon_pid())) {

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Verify that invalid namespace names are rejected with the correct errors.
+# Each call is expected to fail; errors go to stderr and are captured via 2>&1.
+
+# Name longer than MAX_NS_NAME_LEN=5.
+../oo up "toolong" -- sleep 0 2>&1 || true
+
+# Slash in name (path traversal).
+../oo up "fo/o" -- sleep 0 2>&1 || true
+
+# Invalid character.
+../oo up "fo!o" -- sleep 0 2>&1 || true
+
+# Empty name.
+../oo up "" -- sleep 0 2>&1 || true

@@ -1,0 +1,3 @@
+daemon effective caps: none.*ok
+daemon inheritable caps: none.*ok
+daemon ambient caps: none.*ok
