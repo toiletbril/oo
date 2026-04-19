@@ -26,6 +26,12 @@ public:
   fn reset(network_configurator &ns) -> error_or<ok>;
 
 private:
+  // SECURITY: MAX_NS_NAME_LEN enforces the IFNAMSIZ limit on veth interface
+  // names. The generated name is "veth-<name>-host" = 10 + len chars, and
+  // IFNAMSIZ=16 (including null terminator) leaves 5 chars for the name.
+  // Relaxing this silently truncates interface names in the kernel.
+  static constexpr usize MAX_NS_NAME_LEN = 5;
+
   std::string m_name{};
   bool m_is_dir_created{false};
 };

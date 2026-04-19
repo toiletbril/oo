@@ -31,6 +31,10 @@ private:
 
   linux_namespace &m_ns;
   backend m_backend{backend::unknown};
+  // Absolute path to the firewall binary detected at construction time.
+  // SECURITY: Always use this for execvp, never a bare command name, to prevent
+  // PATH-based hijacking of the setuid(0) child process.
+  std::string m_backend_path{};
   bool m_cleaned_up{false};
   std::vector<std::string> m_cleanup_cmds;
 

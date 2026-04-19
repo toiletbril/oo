@@ -4,12 +4,19 @@
 #include "linux_util.hh"
 #include "network_configurator.hh"
 
+#include <cassert>
+#include <cctype>
 #include <unistd.h>
 
 namespace oo {
 
 linux_namespace::~linux_namespace() = default;
 
+// SECURITY: The namespace name is used as a filesystem path component AND as
+// part of veth interface names ("veth-<name>-host", "veth-<name>-ns").
+// Validation below is load-bearing. Do not relax without understanding:
+//   1. IFNAMSIZ limit (MAX_NS_NAME_LEN = 5)
+//   2. Path traversal via '..' or special chars in the name
 fn linux_namespace::create_dir() -> error_or<ok> {
   if (is_dir_created()) {
     trace(verbosity::debug, "Directory already created for namespace '{}'",
@@ -17,10 +24,33 @@ fn linux_namespace::create_dir() -> error_or<ok> {
     return ok{};
   }
 
+  if (m_name.empty()) {
+    return make_error("Namespace name must not be empty.");
+  }
+
   if (get_name().find('/') != std::string::npos) {
-    return make_error("Namespace name mush not include a slash. (" + m_name +
+    return make_error("Namespace name must not include a slash. (" + m_name +
                       ")");
   }
+
+  if (m_name.size() > MAX_NS_NAME_LEN) {
+    return make_error(
+        "Namespace name too long (max " + std::to_string(MAX_NS_NAME_LEN) +
+        " chars); veth interface names would exceed IFNAMSIZ. (" + m_name +
+        ")");
+  }
+
+  // SECURITY: Restrict to [a-zA-Z0-9_-] to prevent path traversal via '..'
+  // and unexpected behavior in interface name or filename contexts.
+  for (char c : m_name) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') {
+      return make_error(
+          std::string{"Namespace name contains invalid character '"} + c +
+          "'. Only alphanumeric, '-', and '_' are allowed. (" + m_name + ")");
+    }
+  }
+
+  assert(m_name.size() <= MAX_NS_NAME_LEN);
 
   std::error_code ec;
   let path = unwrap(get_path());

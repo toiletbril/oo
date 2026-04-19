@@ -2,8 +2,11 @@
 #include "debug.hh"
 #include "linux_util.hh"
 
+#include <cassert>
+#include <fcntl.h>
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
 
 namespace oo {
 
@@ -19,7 +22,43 @@ fn subnet::to_string() const -> std::string {
   return "10.0." + std::to_string(third_octet) + ".0/30";
 }
 
+fn ip_pool::acquire_lock() -> error_or<ok> {
+  m_lock_fd = ::open(LOCK_FILE, O_CREAT | O_RDWR, 0600);
+  if (m_lock_fd < 0) {
+    return make_error("Could not open lock file: " + std::string{LOCK_FILE} +
+                      ": " + linux::get_errno_string());
+  }
+  struct flock fl{};
+  fl.l_type = F_WRLCK;
+  fl.l_whence = SEEK_SET;
+  fl.l_start = 0;
+  fl.l_len = 0;
+  if (::fcntl(m_lock_fd, F_SETLKW, &fl) != 0) {
+    ::close(m_lock_fd);
+    m_lock_fd = -1;
+    return make_error("Could not acquire lock on: " + std::string{LOCK_FILE} +
+                      ": " + linux::get_errno_string());
+  }
+  trace(verbosity::debug, "Acquired IP pool lock");
+  return ok{};
+}
+
+fn ip_pool::release_lock() -> void {
+  if (m_lock_fd >= 0) {
+    ::close(m_lock_fd);
+    m_lock_fd = -1;
+    trace(verbosity::debug, "Released IP pool lock");
+  }
+}
+
 ip_pool::ip_pool() {
+  let lock_result = acquire_lock();
+  if (lock_result.is_err()) {
+    // SECURITY: If locking fails (e.g. /var/run/oo not yet created),
+    // concurrent processes may race on ip-pool.ini. Log the failure.
+    trace(verbosity::error, "Failed to acquire IP pool lock: {}",
+          lock_result.get_error().get_reason());
+  }
   let result = load();
   if (result.is_err()) {
     trace(verbosity::debug, "No existing pool file, starting fresh");
@@ -32,12 +71,16 @@ ip_pool::~ip_pool() {
     trace(verbosity::error, "Failed to save IP pool: {}",
           result.get_error().get_reason());
   }
+  release_lock();
 }
 
 fn ip_pool::allocate() -> error_or<subnet> {
   for (usize i = 0; i < POOL_SIZE; ++i) {
     if (!m_allocated[i]) {
       m_allocated[i] = true;
+      // SECURITY: i is bounded by the loop condition; assert guards against
+      // future refactors that could pass an out-of-range index to subnet{}.
+      assert(i < POOL_SIZE);
       subnet s{static_cast<u8>(i)};
       trace(verbosity::info, "Allocated subnet: {}", s.to_string());
       return s;

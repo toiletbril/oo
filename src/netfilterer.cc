@@ -1,4 +1,5 @@
 #include "netfilterer.hh"
+#include "caps.hh"
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -17,17 +18,25 @@ netfilterer::netfilterer(linux_namespace &ns) : m_ns(ns) {
 }
 
 fn netfilterer::detect_backend() -> backend {
-  // Prioritize iptables-legacy if available.
-  if (std::filesystem::exists(constants::IPTABLES_LEGACY_SBIN_PATH) ||
-      std::filesystem::exists(constants::IPTABLES_LEGACY_BIN_PATH)) {
+  // SECURITY: Store the absolute path so all exec calls use it directly.
+  // Never use a bare command name with execvp; a compromised PATH combined
+  // with a setuid(0) child would allow arbitrary root code execution.
+  if (std::filesystem::exists(constants::IPTABLES_LEGACY_SBIN_PATH)) {
+    m_backend_path = std::string{constants::IPTABLES_LEGACY_SBIN_PATH};
     return backend::iptables_legacy;
   }
-
-  if (std::filesystem::exists(constants::NFT_SBIN_PATH) ||
-      std::filesystem::exists(constants::NFT_BIN_PATH)) {
+  if (std::filesystem::exists(constants::IPTABLES_LEGACY_BIN_PATH)) {
+    m_backend_path = std::string{constants::IPTABLES_LEGACY_BIN_PATH};
+    return backend::iptables_legacy;
+  }
+  if (std::filesystem::exists(constants::NFT_SBIN_PATH)) {
+    m_backend_path = std::string{constants::NFT_SBIN_PATH};
     return backend::nftables;
   }
-
+  if (std::filesystem::exists(constants::NFT_BIN_PATH)) {
+    m_backend_path = std::string{constants::NFT_BIN_PATH};
+    return backend::nftables;
+  }
   return backend::unknown;
 }
 
@@ -42,17 +51,24 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
             su.get_error().get_reason());
       exit(1);
     }
-    trace(verbosity::debug, "setuid(0) ok, executing {}",
-          constants::IPTABLES_LEGACY_CMD);
+    trace(verbosity::debug, "setuid(0) ok, executing {}", m_backend_path);
+
+    // SECURITY: Drop all inherited capabilities before exec. uid=0 is
+    // sufficient for iptables to open /run/xtables.lock and run its root
+    // check. No caps should propagate into the iptables process.
+    unused(caps::drop_for_exec());
 
     std::vector<const char *> exec_args;
-    exec_args.push_back(constants::IPTABLES_LEGACY_CMD.data());
+    exec_args.push_back(m_backend_path.c_str());
     for (const auto &arg : args) {
       exec_args.push_back(arg.c_str());
     }
     exec_args.push_back(nullptr);
 
-    execvp(constants::IPTABLES_LEGACY_CMD.data(),
+    // SECURITY: Use absolute path (m_backend_path) detected at construction
+    // time, never a bare command name, to prevent PATH-hijacking of this
+    // setuid(0) child process.
+    execvp(m_backend_path.c_str(),
            const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
@@ -61,8 +77,7 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
   unwrap(oo_linux_syscall(waitpid, pid, &status, 0));
 
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    return make_error(std::string{constants::IPTABLES_LEGACY_CMD} +
-                      " command failed");
+    return make_error(m_backend_path + " command failed");
   }
 
   return ok{};
@@ -78,16 +93,21 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
             su.get_error().get_reason());
       exit(1);
     }
-    trace(verbosity::debug, "setuid(0) ok, executing {}", constants::NFT_CMD);
+    trace(verbosity::debug, "setuid(0) ok, executing {}", m_backend_path);
+
+    // SECURITY: Drop all inherited capabilities before exec. uid=0 is
+    // sufficient for nftables. No caps should propagate into the nft process.
+    unused(caps::drop_for_exec());
 
     std::vector<const char *> exec_args;
-    exec_args.push_back(constants::NFT_CMD.data());
+    exec_args.push_back(m_backend_path.c_str());
     for (const auto &arg : args) {
       exec_args.push_back(arg.c_str());
     }
     exec_args.push_back(nullptr);
 
-    execvp(constants::NFT_CMD.data(),
+    // SECURITY: Absolute path prevents PATH-hijacking of setuid(0) child.
+    execvp(m_backend_path.c_str(),
            const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
@@ -96,7 +116,7 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
   unwrap(oo_linux_syscall(waitpid, pid, &status, 0));
 
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    return make_error(std::string{constants::NFT_CMD} + " command failed");
+    return make_error(m_backend_path + " command failed");
   }
 
   return ok{};
@@ -112,7 +132,7 @@ fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
     unwrap(exec_iptables({"-t", "nat", "-A", "POSTROUTING", "-s", subnet_str,
                           "-o", iface_str, "-j", "MASQUERADE"}));
 
-    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+    m_cleanup_cmds.push_back(m_backend_path +
                              " -t nat -D POSTROUTING -s " + subnet_str +
                              " -o " + iface_str + " -j MASQUERADE");
 
@@ -141,12 +161,12 @@ fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
 
     unwrap(exec_iptables({"-A", "FORWARD", "-i", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+    m_cleanup_cmds.push_back(m_backend_path +
                              " -D FORWARD -i " + iface_str + " -j ACCEPT");
 
     unwrap(exec_iptables({"-A", "FORWARD", "-o", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back(std::string{constants::IPTABLES_LEGACY_CMD} +
+    m_cleanup_cmds.push_back(m_backend_path +
                              " -D FORWARD -o " + iface_str + " -j ACCEPT");
 
     trace(verbosity::info, "Setup FORWARD rules for {}", host_iface);
@@ -173,6 +193,10 @@ fn netfilterer::cleanup() -> error_or<ok> {
   }
 
   if (m_backend == backend::iptables_legacy) {
+    // SECURITY: cleanup_cmds are built only by setup_nat() and setup_forward()
+    // from internal state. Whitespace splitting is safe because no user-controlled
+    // data ever reaches m_cleanup_cmds. args[0] is always the absolute backend path
+    // set by detect_backend(), not a PATH-searched name.
     for (const auto &cmd : m_cleanup_cmds) {
       std::vector<std::string> args;
       std::istringstream iss(cmd);
@@ -199,6 +223,10 @@ fn netfilterer::cleanup() -> error_or<ok> {
                 su.get_error().get_reason());
           exit(1);
         }
+
+        // SECURITY: Drop all inherited capabilities before exec.
+        // uid=0 is sufficient for iptables cleanup; no caps needed.
+        unused(caps::drop_for_exec());
 
         std::vector<const char *> exec_args;
         for (const auto &arg : args) {

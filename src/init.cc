@@ -43,20 +43,26 @@ fn init(cli::cli &&cli) -> error_or<ok> {
     std::filesystem::create_directories(constants::OO_RUN_DIR, ec);
     unwrap(oo_error_code(ec, std::string{"Failed to create "} +
                                  constants::OO_RUN_DIR));
-    trace(verbosity::info, "Created {} with world-writable permissions",
+    trace(verbosity::info, "Created {} with owner-only write permissions",
           constants::OO_RUN_DIR);
   }
 
+  // SECURITY: 0755 (rwxr-xr-x) prevents unprivileged users from creating or
+  // deleting entries in the parent directory. The binary uses CAP_DAC_OVERRIDE
+  // to create per-user namespace subdirectories despite not owning the dir.
+  // Do not change to 1777 (world-writable); that allows any user to pollute
+  // the global namespace by creating or removing entries here.
   std::filesystem::permissions(constants::OO_RUN_DIR,
-                               std::filesystem::perms::sticky_bit |
-                                   std::filesystem::perms::owner_all |
-                                   std::filesystem::perms::group_all |
-                                   std::filesystem::perms::others_all,
+                               std::filesystem::perms::owner_all |
+                                   std::filesystem::perms::group_read |
+                                   std::filesystem::perms::group_exec |
+                                   std::filesystem::perms::others_read |
+                                   std::filesystem::perms::others_exec,
                                ec);
   unwrap(oo_error_code(ec, std::string{"Failed to set permissions on "}.append(
                                constants::OO_RUN_DIR)));
 
-  trace(verbosity::info, "Updated {} permissions to 1777",
+  trace(verbosity::info, "Updated {} permissions to 0755",
         constants::OO_RUN_DIR);
 
   return ok{};

@@ -4,6 +4,7 @@
 #include "linux_util.hh"
 
 #include <cstdlib>
+#include <unistd.h>
 
 namespace oo {
 
@@ -51,18 +52,29 @@ fn cleanup_guard::run_cleanups() -> void {
 }
 
 void cleanup_guard::handle_signal(int sig) {
+  // SECURITY: This is a POSIX signal handler. Only async-signal-safe operations
+  // are permitted here. Specifically:
+  //   - std::print / trace() are NOT async-signal-safe (omitted intentionally)
+  //   - exit() is NOT async-signal-safe; _exit() is used instead
+  //   - run_cleanups() dispatches std::function objects which are technically
+  //     not guaranteed safe, but in practice the registered callbacks only
+  //     call async-safe syscalls (kill, waitpid, fork, execvp)
+  //
+  // If you add a cleanup function that calls malloc, I/O, or other non-safe
+  // operations, replace this direct-dispatch pattern with a self-pipe or
+  // eventfd to trigger cleanup from the main loop instead.
+  unused(sig);
+
   if (s_shutdown_requested) {
     return;
   }
   s_shutdown_requested = 1;
 
-  trace(verbosity::info, "Received signal `{}`, shutting down", sig);
-
   if (s_active_guard) {
     s_active_guard->run_cleanups();
   }
 
-  exit(0);
+  _exit(0);
 }
 
 } // namespace oo

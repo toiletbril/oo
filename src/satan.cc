@@ -1,4 +1,5 @@
 #include "satan.hh"
+#include "caps.hh"
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -80,6 +81,11 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
         ::close(err_fd);
       }
     }
+
+    // SECURITY: Drop all capabilities before exec so the daemon process
+    // starts with no elevated privileges. The daemon runs inside the
+    // network namespace and needs no special capabilities.
+    unwrap(caps::drop_for_exec());
 
     trace(verbosity::debug, "Executing daemon: {}", daemonized_argv[0]);
     unwrap(linux::oo_exec(daemonized_argv));
@@ -263,6 +269,11 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
         m_ns.get_name(), m_daemon_pid);
 
   unwrap(enter_namespace(m_daemon_pid, m_child_pid));
+
+  // SECURITY: Drop all capabilities before exec. setns() (enter_namespace)
+  // already ran in this process using its file capabilities. The exec'd
+  // command runs inside the namespace and needs no elevated privileges.
+  unwrap(caps::drop_for_exec());
 
   trace(verbosity::info, "Executing: {}", argv[0]);
   unwrap(linux::oo_exec(argv));

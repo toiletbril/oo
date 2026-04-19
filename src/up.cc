@@ -1,5 +1,4 @@
 #include "up.hh"
-#include "caps.hh"
 #include "cli.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -44,8 +43,6 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   }
 
   unwrap(ensure_runtime_dir_exists());
-
-  unwrap(caps::raise_ambient_capabilities());
 
   std::string ns_name = args[0];
   args.erase(args.begin());

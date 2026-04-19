@@ -78,6 +78,38 @@ $ oo down vpn
 graceful exit before falling back to `SIGKILL`. The timeout is configurable
 with `--timeout=<seconds>`.
 
+## Security
+
+This is pre-production software. It has not been audited and is not suitable
+for shared or multi-tenant systems. The security model assumes a small group
+of trusted users on a single machine.
+
+After `oo init`, the binary holds the following Linux file capabilities:
+
+| Capability | Risk | Reason |
+|---|---|---|
+| `CAP_SYS_ADMIN` | Medium | `unshare(CLONE_NEWNET\|CLONE_NEWNS)`, `setns()` |
+| `CAP_NET_ADMIN` | Low | netlink, routing, veth pair creation |
+| `CAP_SYS_PTRACE` | Low | `setns()` into another process's namespace |
+| `CAP_DAC_OVERRIDE` | **High** | **Bypasses all filesystem permission checks**; needed to create dirs in `/var/run/oo` and so iptables children can open `/run/xtables.lock` after `setuid(0)` |
+| `CAP_SETUID` | **High** | **Allows `setuid(0)` in child processes**; needed so iptables/nftables can pass their internal root check |
+| `CAP_SYS_CHROOT` | Medium | `setns(mnt_fd, CLONE_NEWNS)` for mount namespace |
+| `CAP_SETPCAP` | Low | Modify capability bounding set in children |
+
+These capabilities are used only by the `oo` process itself. All exec'd child
+processes (the daemon, `oo exec` targets, and iptables children) have their
+effective and inheritable capability sets dropped before `execvp`.
+
+The runtime directory layout and permissions:
+
+```
+/var/run/oo/          root:root  0755  (only oo can create entries)
+/var/run/oo/<name>/   user:user  0700  (only creator can access)
+```
+
+Any user who can invoke `oo up` can start processes that run with namespace
+isolation. Do not grant access to `oo` on machines with untrusted users.
+
 ## Development
 
 Build and run tests with:
