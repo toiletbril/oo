@@ -1,5 +1,4 @@
 #include "satan.hh"
-#include "commands.hh"
 #include "debug.hh"
 #include "mountain.hh"
 #include "netlinker.hh"
