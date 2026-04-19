@@ -11,6 +11,8 @@
 #include "satan.hh"
 #include "signal_handler.hh"
 
+#include <csignal>
+
 namespace oo {
 
 fn up(cli::cli &&cli) -> error_or<ok> {
@@ -66,17 +68,19 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
     network_configurator existing_netconf{ns, subnet{0}};
     unwrap(existing_netconf.load());
+    const subnet stale_subnet{existing_netconf.get_subnet_octet()};
     ns.reset(existing_netconf);
+    ip_pool stale_pool;
+    unused(stale_pool.free(stale_subnet));
   }
-
-  // Persistent state begins after this line. Use a cleanup guard.
-  cleanup_guard guard{};
 
   let pool = ip_pool{};
   let subnet = unwrap(pool.allocate());
   trace(verbosity::info, "Allocated subnet: `{}`", subnet.to_string());
 
   let netconf = network_configurator{ns, subnet};
+
+  cleanup_guard guard{};
 
   guard.add_cleanup([&ns, &netconf, &pool, &subnet]() {
     unused(ns.reset(netconf));
@@ -86,6 +90,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   guard.add_cleanup([&netconf]() { unused(netconf.cleanup()); });
   // Call below creates network devices. Arm cleanup before the call.
   unwrap(netconf.initial_setup());
+
+  unwrap(ns.create_dir());
 
   dominatrix dns(ns);
   if (flag_resolv_conf_path.is_set()) {
@@ -103,10 +109,19 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   let resolv_path = unwrap(dns.get_resolv_conf_path());
   let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
 
-  satan s{ns};
-  let daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
+  // Kill daemon on error after this point; runs first (LIFO) before network
+  // teardown.
+  pid_t daemon_pid = -1;
+  guard.add_cleanup([&daemon_pid]() {
+    if (daemon_pid != -1) {
+      unused(oo_linux_syscall(kill, daemon_pid, SIGTERM));
+    }
+  });
 
-  netconf.finish_setup(daemon_pid);
+  satan s{ns};
+  daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
+
+  unwrap(netconf.finish_setup(daemon_pid));
 
   s.set_daemon_pid(daemon_pid);
   unwrap(s.save());

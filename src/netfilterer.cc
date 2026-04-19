@@ -194,6 +194,13 @@ fn netfilterer::cleanup() -> error_or<ok> {
       pid_t pid = fork_result.get_value();
 
       if (pid == 0) {
+        let su = oo_linux_syscall(setuid, (uid_t)0);
+        if (su.is_err()) {
+          trace(verbosity::error, "setuid(0) failed: {}",
+                su.get_error().get_reason());
+          exit(1);
+        }
+
         std::vector<const char *> exec_args;
         for (const auto &arg : args) {
           exec_args.push_back(arg.c_str());

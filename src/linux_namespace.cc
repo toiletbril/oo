@@ -1,6 +1,5 @@
 #include "linux_namespace.hh"
 #include "debug.hh"
-#include "ip_pool.hh"
 #include "linux_util.hh"
 #include "network_configurator.hh"
 
@@ -71,10 +70,6 @@ fn linux_namespace::get_name() -> const std::string & { return m_name; }
 
 fn linux_namespace::reset(network_configurator &nc) -> error_or<ok> {
   unused(nc.cleanup());
-
-  ip_pool pool;
-  const subnet s{nc.get_subnet_octet()};
-  unused(pool.free(s));
 
   let ns_path_result = get_path();
   if (!ns_path_result.is_err()) {
