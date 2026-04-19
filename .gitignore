@@ -1,8 +1,13 @@
 .claude
+
 src/o
 oo
+
 *.exe
 *.txt
+*.diff
+core.*
+
 r.sh
 /.cache/clangd/index
 /compile_commands.json

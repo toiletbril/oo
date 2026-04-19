@@ -9,7 +9,7 @@ namespace oo {
 
 namespace caps {
 
-fn raise_ambient_capabilities() -> void;
+fn raise_ambient_capabilities() -> error_or<ok>;
 fn set_file_capabilities(const char *path) -> error_or<ok>;
 
 } // namespace caps

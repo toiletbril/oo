@@ -1,6 +1,8 @@
 #include "linux_namespace.hh"
 #include "debug.hh"
+#include "ip_pool.hh"
 #include "linux_util.hh"
+#include "network_configurator.hh"
 
 #include <unistd.h>
 
@@ -66,5 +68,28 @@ fn linux_namespace::get_path() -> error_or<std::filesystem::path> {
 fn linux_namespace::is_dir_created() -> bool { return m_is_dir_created; }
 
 fn linux_namespace::get_name() -> const std::string & { return m_name; }
+
+fn linux_namespace::reset(network_configurator &nc) -> error_or<ok> {
+  unused(nc.cleanup());
+
+  ip_pool pool;
+  const subnet s{nc.get_subnet_octet()};
+  unused(pool.free(s));
+
+  let ns_path_result = get_path();
+  if (!ns_path_result.is_err()) {
+    std::error_code ec;
+    std::filesystem::remove_all(ns_path_result.get_value(), ec);
+    if (ec) {
+      trace(verbosity::error, "Failed to remove namespace directory: {}",
+            ec.message());
+    } else {
+      trace(verbosity::debug, "Removed namespace directory: {}",
+            ns_path_result.get_value().string());
+    }
+  }
+
+  return ok{};
+}
 
 } // namespace oo

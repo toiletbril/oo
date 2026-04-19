@@ -37,7 +37,7 @@ namespace oo::debug {
 #define trace(v, ...)                                                          \
   do {                                                                         \
     if ((v) <= oo::LOGGER_VERBOSITY) {                                         \
-      std::print(stderr, "[{}] {:>32} {}(): ", oo::verbosity_to_string(v),     \
+      std::print(stderr, "[{}] {:>32} {:>32}(): ", oo::verbosity_to_string(v), \
                  std::string{__FILE__} + ":" + std::to_string(__LINE__),       \
                  __func__);                                                    \
       std::println(stderr, __VA_ARGS__);                                       \

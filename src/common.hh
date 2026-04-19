@@ -84,6 +84,7 @@ forceinline constexpr u64 hash_string(std::string_view s) {
   return h;
 }
 
+#define string_switch(s) switch (hash_string(s))
 #define string_case(s) case (hash_string(s))
 
 } // namespace oo

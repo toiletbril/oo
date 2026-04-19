@@ -57,7 +57,7 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
   cli.reset_context();
 
   // clang-format off
-  switch (hash_string(*subcommand)) {
+  string_switch (*subcommand) {
   string_case("up"):
   string_case("u"): {
     return up(std::move(cli));

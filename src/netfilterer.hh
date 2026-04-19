@@ -31,6 +31,7 @@ private:
 
   linux_namespace &m_ns;
   backend m_backend{backend::unknown};
+  bool m_cleaned_up{false};
   std::vector<std::string> m_cleanup_cmds;
 
   fn detect_backend() -> backend;

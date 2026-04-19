@@ -25,7 +25,7 @@ fn netlinker::generate_veth_names() -> void {
   m_veth_ns = "veth-" + m_ns.get_name() + "-ns";
 }
 
-netlinker::~netlinker() = default;
+netlinker::~netlinker() { unused(cleanup()); }
 
 fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
   trace_variables(verbosity::debug, ifname);
@@ -390,6 +390,7 @@ fn netlinker::cleanup() -> error_or<ok> {
     trace(verbosity::debug, "Failed to delete veth (may not exist): {}",
           del_result.get_error().get_reason());
   }
+
   return ok{};
 }
 

@@ -14,7 +14,8 @@
 
 namespace oo {
 
-static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf) -> void {
+static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf)
+    -> void {
   unused(netconf.cleanup());
 
   ip_pool pool;

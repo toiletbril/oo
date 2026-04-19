@@ -28,10 +28,14 @@ public:
   fn save() const -> error_or<ok>;
   fn load() -> error_or<ok>;
 
-  fn get_veth_host_name() const -> std::string_view { return m_netlinker.get_veth_host_name(); }
-  fn get_veth_ns_name() const -> std::string_view { return m_netlinker.get_veth_ns_name(); }
+  fn get_veth_host_name() const -> std::string_view {
+    return m_netlinker.get_veth_host_name();
+  }
+  fn get_veth_ns_name() const -> std::string_view {
+    return m_netlinker.get_veth_ns_name();
+  }
   fn get_subnet_octet() const -> u8 { return m_subnet.third_octet; }
-  fn get_netlinker() -> netlinker& { return m_netlinker; }
+  fn get_netlinker() -> netlinker & { return m_netlinker; }
 
 private:
   linux_namespace &m_ns;

@@ -36,6 +36,15 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
   pid_t pid = unwrap(oo_linux_syscall(fork));
 
   if (pid == 0) {
+    let su = oo_linux_syscall(setuid, (uid_t)0);
+    if (su.is_err()) {
+      trace(verbosity::error, "setuid(0) failed: {}",
+            su.get_error().get_reason());
+      exit(1);
+    }
+    trace(verbosity::debug, "setuid(0) ok, executing {}",
+          constants::IPTABLES_LEGACY_CMD);
+
     std::vector<const char *> exec_args;
     exec_args.push_back(constants::IPTABLES_LEGACY_CMD.data());
     for (const auto &arg : args) {
@@ -63,6 +72,14 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
   pid_t pid = unwrap(oo_linux_syscall(fork));
 
   if (pid == 0) {
+    let su = oo_linux_syscall(setuid, (uid_t)0);
+    if (su.is_err()) {
+      trace(verbosity::error, "setuid(0) failed: {}",
+            su.get_error().get_reason());
+      exit(1);
+    }
+    trace(verbosity::debug, "setuid(0) ok, executing {}", constants::NFT_CMD);
+
     std::vector<const char *> exec_args;
     exec_args.push_back(constants::NFT_CMD.data());
     for (const auto &arg : args) {
@@ -151,6 +168,11 @@ fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
 }
 
 fn netfilterer::cleanup() -> error_or<ok> {
+  if (m_cleaned_up) {
+    return ok{};
+  }
+  m_cleaned_up = true;
+
   if (m_backend == backend::iptables_legacy) {
     for (const auto &cmd : m_cleanup_cmds) {
       std::vector<std::string> args;

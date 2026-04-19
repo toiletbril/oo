@@ -11,6 +11,8 @@
 
 namespace oo {
 
+class network_configurator;
+
 class linux_namespace {
 public:
   linux_namespace(std::string_view name) : m_name(name) {};
@@ -21,6 +23,7 @@ public:
   fn unshare() -> error_or<ok>;
   fn get_path() -> error_or<std::filesystem::path>;
   fn get_name() -> const std::string &;
+  fn reset(network_configurator &ns) -> error_or<ok>;
 
 private:
   std::string m_name{};

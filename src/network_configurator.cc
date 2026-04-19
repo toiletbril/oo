@@ -76,7 +76,8 @@ fn network_configurator::initial_setup() -> error_or<ok> {
 
   let del_result = m_netlinker.delete_link(m_netlinker.get_veth_host_name());
   if (!del_result.is_err()) {
-    trace(verbosity::debug, "Deleted existing veth pair `{}`", m_netlinker.get_veth_host_name());
+    trace(verbosity::debug, "Deleted existing veth pair `{}`",
+          m_netlinker.get_veth_host_name());
   }
 
   unwrap(enable_ip_forward());
@@ -85,10 +86,11 @@ fn network_configurator::initial_setup() -> error_or<ok> {
         m_netlinker.get_veth_host_name(), m_netlinker.get_veth_ns_name());
 
   unwrap(m_netlinker.create_veth_pair(m_netlinker.get_veth_host_name(),
-                                       m_netlinker.get_veth_ns_name()));
+                                      m_netlinker.get_veth_ns_name()));
 
-  unwrap(m_netlinker.add_address(m_netlinker.get_veth_host_name(), m_subnet.host_ip(),
-                                  constants::SUBNET_PREFIX_LEN));
+  unwrap(m_netlinker.add_address(m_netlinker.get_veth_host_name(),
+                                 m_subnet.host_ip(),
+                                 constants::SUBNET_PREFIX_LEN));
 
   unwrap(m_netlinker.set_link_up(m_netlinker.get_veth_host_name()));
 
@@ -107,7 +109,8 @@ fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok> {
   if (!m_initial_setup_done)
     return make_error("Initial setup not done.");
   unwrap(m_netlinker.set_link_up(m_netlinker.get_veth_ns_name()));
-  unwrap(m_netlinker.move_to_namespace(m_netlinker.get_veth_ns_name(), daemon_pid));
+  unwrap(m_netlinker.move_to_namespace(m_netlinker.get_veth_ns_name(),
+                                       daemon_pid));
   m_setup_done = true;
   return ok{};
 }

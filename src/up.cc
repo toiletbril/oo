@@ -11,30 +11,7 @@
 #include "satan.hh"
 #include "signal_handler.hh"
 
-#include <filesystem>
-
 namespace oo {
-
-static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf) -> void {
-  unused(netconf.cleanup());
-
-  ip_pool pool;
-  const subnet s{netconf.get_subnet_octet()};
-  unused(pool.free(s));
-
-  let ns_path_result = ns.get_path();
-  if (!ns_path_result.is_err()) {
-    std::error_code ec;
-    std::filesystem::remove_all(ns_path_result.get_value(), ec);
-    if (ec) {
-      trace(verbosity::error, "Failed to remove namespace directory: {}",
-            ec.message());
-    } else {
-      trace(verbosity::debug, "Removed namespace directory: {}",
-            ns_path_result.get_value().string());
-    }
-  }
-}
 
 fn up(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case(
@@ -69,7 +46,7 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   unwrap(ensure_runtime_dir_exists());
 
-  caps::raise_ambient_capabilities();
+  unwrap(caps::raise_ambient_capabilities());
 
   std::string ns_name = args[0];
   args.erase(args.begin());
@@ -89,12 +66,11 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
     network_configurator existing_netconf{ns, subnet{0}};
     unwrap(existing_netconf.load());
-    cleanup_namespace(ns, existing_netconf);
+    ns.reset(existing_netconf);
   }
 
+  // Persistent state begins after this line. Use a cleanup guard.
   cleanup_guard guard{};
-
-  unwrap(ns.create_dir());
 
   let pool = ip_pool{};
   let subnet = unwrap(pool.allocate());
@@ -102,11 +78,13 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   let netconf = network_configurator{ns, subnet};
 
-  guard.add_cleanup([&pool, &subnet]() {
+  guard.add_cleanup([&ns, &netconf, &pool, &subnet]() {
+    unused(ns.reset(netconf));
     unused(pool.free(subnet));
   });
 
   guard.add_cleanup([&netconf]() { unused(netconf.cleanup()); });
+  // Call below creates network devices. Arm cleanup before the call.
   unwrap(netconf.initial_setup());
 
   dominatrix dns(ns);
@@ -128,10 +106,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   satan s{ns};
   let daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
 
-  // Move other end of veth to the namespace.
   netconf.finish_setup(daemon_pid);
 
-  // Persist for down/exec commands.
   s.set_daemon_pid(daemon_pid);
   unwrap(s.save());
   unwrap(netconf.save());
