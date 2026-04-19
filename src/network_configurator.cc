@@ -1,6 +1,7 @@
 #include "network_configurator.hh"
 #include "constants.hh"
 #include "debug.hh"
+#include "linux_util.hh"
 
 #include <fcntl.h>
 #include <fstream>
@@ -18,7 +19,8 @@ fn network_configurator::detect_default_interface() -> error_or<std::string> {
   std::ifstream route_file(constants::PROC_NET_ROUTE);
   if (!route_file.is_open()) {
     return make_error("Could not open " +
-                      std::string{constants::PROC_NET_ROUTE});
+                      std::string{constants::PROC_NET_ROUTE} + ": " +
+                      linux::get_errno_string());
   }
 
   std::string line;
@@ -38,7 +40,8 @@ fn network_configurator::detect_default_interface() -> error_or<std::string> {
     }
   }
 
-  return make_error("Could not detect default network interface");
+  return make_error("No default route found in " +
+                    std::string{constants::PROC_NET_ROUTE});
 }
 
 fn network_configurator::enable_ip_forward() -> error_or<ok> {
@@ -55,12 +58,15 @@ fn network_configurator::enable_ip_forward() -> error_or<ok> {
   std::ofstream forward_file(std::string{constants::PROC_IPV4_FORWARD});
   if (!forward_file.is_open()) {
     return make_error("Could not open " +
-                      std::string{constants::PROC_IPV4_FORWARD});
+                      std::string{constants::PROC_IPV4_FORWARD} + ": " +
+                      linux::get_errno_string());
   }
 
   forward_file << "1\n";
   if (!forward_file.good()) {
-    return make_error("Failed to enable IP forwarding");
+    return make_error("Failed to write to " +
+                      std::string{constants::PROC_IPV4_FORWARD} + ": " +
+                      linux::get_errno_string());
   }
 
   trace(verbosity::info, "Enabled IP forwarding");
@@ -116,7 +122,8 @@ fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok> {
   unwrap(m_netlinker.move_to_namespace(m_netlinker.get_veth_ns_name(),
                                        daemon_pid));
 
-  int orig_ns_fd = unwrap(linux::oo_open("/proc/self/ns/net", O_RDONLY));
+  int orig_ns_fd =
+      unwrap(linux::oo_open(constants::PROC_SELF_NS_NET.data(), O_RDONLY));
   defer { unused(linux::oo_close(orig_ns_fd)); };
 
   let daemon_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
@@ -154,7 +161,7 @@ fn network_configurator::save() const -> error_or<ok> {
   std::ofstream file(net_path);
   if (!file.is_open()) {
     return make_error("Could not open network file for writing: " +
-                      net_path.string());
+                      net_path.string() + ": " + linux::get_errno_string());
   }
 
   file << "# Network state\n";
@@ -176,7 +183,8 @@ fn network_configurator::load() -> error_or<ok> {
 
   std::ifstream file(net_path);
   if (!file.is_open()) {
-    return make_error("Could not open network file: " + net_path.string());
+    return make_error("Could not open network file: " + net_path.string() +
+                      ": " + linux::get_errno_string());
   }
 
   u8 subnet_octet = 0;

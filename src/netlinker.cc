@@ -1,4 +1,5 @@
 #include "netlinker.hh"
+#include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
 #include "netlink_builder.hh"
@@ -21,8 +22,10 @@ netlinker::netlinker(linux_namespace &ns)
 }
 
 fn netlinker::generate_veth_names() -> void {
-  m_veth_host = "veth-" + m_ns.get_name() + "-host";
-  m_veth_ns = "veth-" + m_ns.get_name() + "-ns";
+  m_veth_host = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
+                std::string{constants::VETH_HOST_SUFFIX};
+  m_veth_ns = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
+              std::string{constants::VETH_NS_SUFFIX};
 }
 
 netlinker::~netlinker() = default;
@@ -56,7 +59,8 @@ fn netlinker::create_veth_pair(std::string_view host_name,
   builder.add_attr_str(IFLA_IFNAME, host_name);
 
   let linkinfo = builder.begin_nested(IFLA_LINKINFO);
-  builder.add_attr(IFLA_INFO_KIND, "veth", 4);
+  builder.add_attr(IFLA_INFO_KIND, constants::VETH_KIND.data(),
+                   constants::VETH_KIND.size());
 
   let data = builder.begin_nested(IFLA_INFO_DATA);
   let peer = builder.begin_nested(VETH_INFO_PEER);
@@ -69,7 +73,7 @@ fn netlinker::create_veth_pair(std::string_view host_name,
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   for (;;) {
     let len = unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
@@ -119,7 +123,7 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
@@ -178,7 +182,7 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
@@ -218,7 +222,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
 
   char *buf_ptr = req.buf;
 
-  if (prefix_len > 0 && !dest_ip.empty() && dest_ip != "0.0.0.0") {
+  if (prefix_len > 0 && !dest_ip.empty() &&
+      dest_ip != constants::DEFAULT_GATEWAY_IP) {
     struct in_addr dst;
     if (inet_pton(AF_INET, dest_ip.data(), &dst) != 1) {
       return make_error("Invalid destination IP: " + std::string{dest_ip});
@@ -245,7 +250,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
@@ -283,7 +288,7 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok> {
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
@@ -321,7 +326,7 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok> {
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
@@ -356,7 +361,7 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
 
   unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
 
-  char resp_buf[4096];
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
 
   struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);

@@ -59,10 +59,14 @@ fn down(cli::cli &&cli) -> error_or<ok> {
   linux_namespace ns{ns_name};
 
   satan s{ns};
-  unwrap(s.load());
+  if (let r = s.load(); r.is_err()) {
+    return make_error("Namespace '" + ns_name + "' is not running");
+  }
 
   network_configurator netconf{ns, subnet{0}};
-  unwrap(netconf.load());
+  if (let r = netconf.load(); r.is_err()) {
+    return make_error("Namespace '" + ns_name + "' is not running");
+  }
 
   // Graceful shutdown with timeout.
   if (s.get_daemon_pid() > 0) {

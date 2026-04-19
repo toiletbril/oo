@@ -1,4 +1,5 @@
 #include "linux_namespace.hh"
+#include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
 #include "network_configurator.hh"
@@ -6,8 +7,6 @@
 #include <unistd.h>
 
 namespace oo {
-
-let static const DIR_PREFIX = "/var/run/oo";
 
 linux_namespace::~linux_namespace() = default;
 
@@ -61,7 +60,7 @@ fn linux_namespace::unshare() -> error_or<ok> {
 }
 
 fn linux_namespace::get_path() -> error_or<std::filesystem::path> {
-  return std::filesystem::path{DIR_PREFIX}.append(m_name);
+  return std::filesystem::path{constants::OO_RUN_DIR}.append(m_name);
 }
 
 fn linux_namespace::is_dir_created() -> bool { return m_is_dir_created; }

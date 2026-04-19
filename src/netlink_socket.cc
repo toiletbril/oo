@@ -1,4 +1,5 @@
 #include "netlink_socket.hh"
+#include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
 
@@ -31,20 +32,21 @@ fn netlink_socket::open() -> error_or<ok> {
   let sock_result =
       oo_linux_syscall(socket, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
   if (sock_result.is_err()) {
-    return make_error(
-        "Failed to create netlink socket. Ensure the kernel supports netlink");
+    return make_error("Failed to create netlink socket: " +
+                      linux::get_errno_string());
   }
   m_sock = sock_result.get_value();
 
   struct timeval tv{};
-  tv.tv_sec = 5;
+  tv.tv_sec = constants::NETLINK_TIMEOUT_SEC;
   tv.tv_usec = 0;
   let timeout_result = oo_linux_syscall(setsockopt, m_sock, SOL_SOCKET,
                                         SO_RCVTIMEO, &tv, sizeof(tv));
   if (timeout_result.is_err()) {
     unwrap(linux::oo_close(m_sock));
     m_sock = -1;
-    return make_error("Failed to set socket timeout");
+    return make_error("Failed to set netlink socket timeout: " +
+                      linux::get_errno_string());
   }
 
   struct sockaddr_nl addr{};
@@ -58,8 +60,8 @@ fn netlink_socket::open() -> error_or<ok> {
   if (bind_result.is_err()) {
     unwrap(linux::oo_close(m_sock));
     m_sock = -1;
-    return make_error("Failed to bind netlink socket. Ensure you have network "
-                      "admin permissions");
+    return make_error("Failed to bind netlink socket: " +
+                      linux::get_errno_string());
   }
 
   trace(verbosity::debug, "Opened netlink socket: {}", m_sock);

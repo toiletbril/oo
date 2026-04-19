@@ -1,5 +1,6 @@
 #include "ip_pool.hh"
 #include "debug.hh"
+#include "linux_util.hh"
 
 #include <fstream>
 #include <sstream>
@@ -63,7 +64,8 @@ fn ip_pool::is_allocated(subnet s) const -> bool {
 fn ip_pool::load() -> error_or<ok> {
   std::ifstream file(POOL_FILE);
   if (!file.is_open()) {
-    return make_error("Could not open pool file: " + std::string{POOL_FILE});
+    return make_error("Could not open pool file: " + std::string{POOL_FILE} +
+                      ": " + linux::get_errno_string());
   }
 
   m_allocated.fill(false);
@@ -106,8 +108,9 @@ fn ip_pool::save() -> error_or<ok> {
 
   std::ofstream file(POOL_FILE);
   if (!file.is_open()) {
-    return make_error("Could not open pool file for writing: " +
-                      std::string{POOL_FILE});
+    return make_error(
+        "Could not open pool file for writing: " + std::string{POOL_FILE} +
+        ": " + linux::get_errno_string());
   }
 
   file << "# IP Pool allocation state\n";
@@ -120,7 +123,8 @@ fn ip_pool::save() -> error_or<ok> {
   }
 
   if (!file.good()) {
-    return make_error("Error writing to pool file");
+    return make_error("Error writing to pool file: " + std::string{POOL_FILE} +
+                      ": " + linux::get_errno_string());
   }
 
   trace(verbosity::debug, "Saved IP pool to {}", POOL_FILE);

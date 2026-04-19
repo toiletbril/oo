@@ -42,6 +42,21 @@ inline constexpr usize FORCEFUL_SHUTDOWN_SLEEP_MS = 500;
 inline constexpr usize GRACEFUL_SHUTDOWN_ITERATIONS = 50;
 
 inline constexpr std::string_view DEFAULT_ROUTE_DEST = "00000000";
+inline constexpr std::string_view DEFAULT_GATEWAY_IP = "0.0.0.0";
+
+inline constexpr usize NETLINK_TIMEOUT_SEC = 5;
+inline constexpr usize NETLINK_RESP_BUF_SIZE = 4096;
+
+inline constexpr std::string_view VETH_NAME_PREFIX = "veth-";
+inline constexpr std::string_view VETH_HOST_SUFFIX = "-host";
+inline constexpr std::string_view VETH_NS_SUFFIX = "-ns";
+inline constexpr std::string_view VETH_KIND = "veth";
+
+inline constexpr std::string_view PROC_SELF_NS_NET = "/proc/self/ns/net";
+
+inline constexpr std::string_view DAEMON_MSG_ERR = "err\n";
+inline constexpr std::string_view DAEMON_MSG_OK = "ok:";
+inline constexpr int DAEMON_SPAWN_TIMEOUT_MS = 5000;
 
 } // namespace constants
 

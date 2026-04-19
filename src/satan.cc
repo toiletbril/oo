@@ -1,5 +1,7 @@
 #include "satan.hh"
+#include "constants.hh"
 #include "debug.hh"
+#include "linux_util.hh"
 #include "mountain.hh"
 #include "netlinker.hh"
 #include "pid_tracker.hh"
@@ -79,7 +81,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     let ret = start_daemon(m_ns);
     if (ret.is_err()) {
       let err_text = ret.get_error().get_owned_reason();
-      unused(oo_linux_syscall(write, pipes[1], "err\n", 4));
+      unused(oo_linux_syscall(write, pipes[1], constants::DAEMON_MSG_ERR.data(),
+                              constants::DAEMON_MSG_ERR.size()));
       unused(oo_linux_syscall(write, pipes[1], err_text.data(),
                               err_text.length()));
       unwrap(linux::oo_close(pipes[1]));
@@ -87,7 +90,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     }
 
     let daemon_pid = ret.get_value();
-    let ok_msg = "ok:" + std::to_string(daemon_pid) + "\n";
+    let ok_msg = std::string{constants::DAEMON_MSG_OK} +
+                 std::to_string(daemon_pid) + "\n";
     unused(oo_linux_syscall(write, pipes[1], ok_msg.data(), ok_msg.length()));
     unwrap(linux::oo_close(pipes[1]));
 
@@ -109,7 +113,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   unwrap(linux::oo_close(pipes[1]));
 
   struct pollfd daemon_log = {.fd = pipes[0], .events = POLLIN, .revents = 0};
-  let ret = unwrap(oo_linux_syscall(poll, &daemon_log, 1, 5 * 1000));
+  let ret = unwrap(oo_linux_syscall(poll, &daemon_log, 1,
+                                    constants::DAEMON_SPAWN_TIMEOUT_MS));
   insist(ret >= 0);
 
   if (ret == 0) {
@@ -123,7 +128,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   buf[n] = '\0';
   std::string_view msg(buf, n);
 
-  if (msg.starts_with("err\n")) {
+  if (msg.starts_with(constants::DAEMON_MSG_ERR)) {
     std::string err_msg = "Daemon process failed";
     if (msg.length() > 4) {
       err_msg += ": " + std::string{msg.substr(4)};
@@ -131,8 +136,9 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     return make_error(err_msg);
   }
 
-  insist(msg.starts_with("ok:"));
-  m_child_pid = std::stoi(std::string{msg.substr(3)});
+  insist(msg.starts_with(constants::DAEMON_MSG_OK));
+  m_child_pid =
+      std::stoi(std::string{msg.substr(constants::DAEMON_MSG_OK.size())});
 
   trace(verbosity::info, "Daemon spawned successfully, PID: {}", child_pid);
 
@@ -167,7 +173,7 @@ fn satan::save() const -> error_or<ok> {
   std::ofstream file(pid_path);
   if (!file.is_open()) {
     return make_error("Could not open PID file for writing: " +
-                      pid_path.string());
+                      pid_path.string() + ": " + linux::get_errno_string());
   }
 
   file << "# Process state\n";
@@ -188,7 +194,8 @@ fn satan::load() -> error_or<ok> {
 
   std::ifstream file(pid_path);
   if (!file.is_open()) {
-    return make_error("Could not open PID file: " + pid_path.string());
+    return make_error("Could not open PID file: " + pid_path.string() + ": " +
+                      linux::get_errno_string());
   }
 
   std::string line;
@@ -222,19 +229,17 @@ fn satan::load() -> error_or<ok> {
 }
 
 fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
-  unwrap(load());
+  if (let r = load(); r.is_err()) {
+    return make_error("Namespace '" + m_ns.get_name() + "' is not running");
+  }
 
   if (m_daemon_pid == 0) {
-    return make_error("No daemon running in namespace '" + m_ns.get_name() +
-                      "'");
+    return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
 
   if (!pid_tracker::is_alive(m_daemon_pid)) {
-    trace(verbosity::error,
-          "Daemon is not running (stale PID {}). Cleaning up...", m_daemon_pid);
-
-    return make_error("Daemon is not running in namespace '" + m_ns.get_name() +
-                      "'");
+    trace(verbosity::error, "Daemon has stale PID {}.", m_daemon_pid);
+    return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
 
   trace(verbosity::info, "Entering namespace '{}' (daemon PID: {})",
