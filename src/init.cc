@@ -6,6 +6,7 @@
 #include "linux_util.hh"
 
 #include <filesystem>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 namespace oo {
@@ -35,6 +36,14 @@ fn init(cli::cli &&cli) -> error_or<ok> {
   // CAP_SYS_ADMIN: Required for unshare(CLONE_NEWNET|CLONE_NEWNS).
   // CAP_NET_ADMIN: Required for network configuration (netlink, routes, etc).
   // CAP_SYS_PTRACE: Required for setns() to enter namespaces.
+
+  struct statvfs vfs{};
+  unwrap(oo_linux_syscall(statvfs, exe_path.c_str(), &vfs));
+  if (vfs.f_flag & ST_NOSUID) {
+    return make_error(
+        "Binary is on a nosuid mount; the kernel will not honor file "
+        "capabilities. Move oo to a non-nosuid filesystem and re-run init.");
+  }
 
   unwrap(caps::set_file_capabilities(exe_path.c_str()));
 

@@ -68,8 +68,7 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
     // SECURITY: Use absolute path (m_backend_path) detected at construction
     // time, never a bare command name, to prevent PATH-hijacking of this
     // setuid(0) child process.
-    execvp(m_backend_path.c_str(),
-           const_cast<char *const *>(exec_args.data()));
+    execvp(m_backend_path.c_str(), const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
 
@@ -107,8 +106,7 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
     exec_args.push_back(nullptr);
 
     // SECURITY: Absolute path prevents PATH-hijacking of setuid(0) child.
-    execvp(m_backend_path.c_str(),
-           const_cast<char *const *>(exec_args.data()));
+    execvp(m_backend_path.c_str(), const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
 
@@ -132,9 +130,9 @@ fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
     unwrap(exec_iptables({"-t", "nat", "-A", "POSTROUTING", "-s", subnet_str,
                           "-o", iface_str, "-j", "MASQUERADE"}));
 
-    m_cleanup_cmds.push_back(m_backend_path +
-                             " -t nat -D POSTROUTING -s " + subnet_str +
-                             " -o " + iface_str + " -j MASQUERADE");
+    m_cleanup_cmds.push_back(m_backend_path + " -t nat -D POSTROUTING -s " +
+                             subnet_str + " -o " + iface_str +
+                             " -j MASQUERADE");
 
     trace(verbosity::info, "Setup NAT for {} via {}", subnet, host_iface);
   } else if (m_backend == backend::nftables) {
@@ -161,13 +159,13 @@ fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
 
     unwrap(exec_iptables({"-A", "FORWARD", "-i", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back(m_backend_path +
-                             " -D FORWARD -i " + iface_str + " -j ACCEPT");
+    m_cleanup_cmds.push_back(m_backend_path + " -D FORWARD -i " + iface_str +
+                             " -j ACCEPT");
 
     unwrap(exec_iptables({"-A", "FORWARD", "-o", iface_str, "-j", "ACCEPT"}));
 
-    m_cleanup_cmds.push_back(m_backend_path +
-                             " -D FORWARD -o " + iface_str + " -j ACCEPT");
+    m_cleanup_cmds.push_back(m_backend_path + " -D FORWARD -o " + iface_str +
+                             " -j ACCEPT");
 
     trace(verbosity::info, "Setup FORWARD rules for {}", host_iface);
   } else if (m_backend == backend::nftables) {
@@ -194,9 +192,9 @@ fn netfilterer::cleanup() -> error_or<ok> {
 
   if (m_backend == backend::iptables_legacy) {
     // SECURITY: cleanup_cmds are built only by setup_nat() and setup_forward()
-    // from internal state. Whitespace splitting is safe because no user-controlled
-    // data ever reaches m_cleanup_cmds. args[0] is always the absolute backend path
-    // set by detect_backend(), not a PATH-searched name.
+    // from internal state. Whitespace splitting is safe because no
+    // user-controlled data ever reaches m_cleanup_cmds. args[0] is always the
+    // absolute backend path set by detect_backend(), not a PATH-searched name.
     for (const auto &cmd : m_cleanup_cmds) {
       std::vector<std::string> args;
       std::istringstream iss(cmd);

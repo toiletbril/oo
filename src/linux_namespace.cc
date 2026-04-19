@@ -28,10 +28,10 @@ fn linux_namespace::validate_name() -> error_or<ok> {
   }
 
   if (m_name.size() > MAX_NS_NAME_LEN) {
-    return make_error(
-        "Namespace name too long (max " + std::to_string(MAX_NS_NAME_LEN) +
-        " chars); veth interface names would exceed IFNAMSIZ. (" + m_name +
-        ")");
+    return make_error("Namespace name too long (max " +
+                      std::to_string(MAX_NS_NAME_LEN) +
+                      " chars); veth interface names would exceed IFNAMSIZ. (" +
+                      m_name + ")");
   }
 
   // SECURITY: Restrict to [a-zA-Z0-9_-] to prevent path traversal via '..'

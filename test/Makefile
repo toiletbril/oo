@@ -18,6 +18,11 @@ setup:
 		printf "capabilities not set on %s\nrun: sudo %s init\n" $(BIN) $(BIN) >&2; \
 		exit 1; \
 	fi
+	@BIN_DIR=$$(dirname $$(readlink -f $(BIN))); \
+	if findmnt -n -o OPTIONS --target "$$BIN_DIR" 2>/dev/null | grep -q nosuid; then \
+		printf "binary is on a nosuid mount; kernel ignores file capabilities\ncopy binary to a non-nosuid path and re-run\n" >&2; \
+		exit 1; \
+	fi
 
 clean:
 	@rm -f $(FAILED_LIST)

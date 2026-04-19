@@ -30,13 +30,8 @@ namespace caps {
 //   CAP_SYS_CHROOT -> setns(mnt_fd, CLONE_NEWNS)
 //   CAP_SETPCAP    -> modify capability bounding set in children
 static constexpr cap_value_t CAP_LIST[] = {
-    CAP_SYS_ADMIN,
-    CAP_NET_ADMIN,
-    CAP_SYS_PTRACE,
-    CAP_DAC_OVERRIDE,
-    CAP_SETUID,
-    CAP_SYS_CHROOT,
-    CAP_SETPCAP,
+    CAP_SYS_ADMIN, CAP_NET_ADMIN,  CAP_SYS_PTRACE, CAP_DAC_OVERRIDE,
+    CAP_SETUID,    CAP_SYS_CHROOT, CAP_SETPCAP,
 };
 
 // Compile-time guards: fire if the unsafe caps are accidentally removed.
@@ -93,9 +88,10 @@ fn drop_for_exec() -> error_or<ok> {
 
   // Drop effective and inheritable sets so the exec'd binary inherits nothing
   // via the permitted = (inheritable & file_inheritable) | file_permitted path.
-  // SECURITY: A process can always drop its own caps without special privileges.
-  // If you add back CAP_EFFECTIVE or CAP_INHERITABLE here, the exec'd child
-  // may acquire those caps from the kernel's capability transition rules.
+  // SECURITY: A process can always drop its own caps without special
+  // privileges. If you add back CAP_EFFECTIVE or CAP_INHERITABLE here, the
+  // exec'd child may acquire those caps from the kernel's capability transition
+  // rules.
   cap_t caps =
       unwrap(oo_non_zero(cap_get_proc(), "Failed to get process capabilities"));
   defer { cap_free(caps); };

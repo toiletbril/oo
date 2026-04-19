@@ -34,9 +34,9 @@ fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok> {
   trace_variables(verbosity::all, dns_file_path);
   // SECURITY: With CAP_DAC_OVERRIDE active, this binary can open any file on
   // the filesystem regardless of its permissions. The dns_file_path comes from
-  // the --dns-file flag (user-supplied). The trusted-user security model accepts
-  // reading arbitrary files. If that model changes, validate that the path
-  // resolves to an approved directory (e.g. via realpath + prefix check).
+  // the --dns-file flag (user-supplied). The trusted-user security model
+  // accepts reading arbitrary files. If that model changes, validate that the
+  // path resolves to an approved directory (e.g. via realpath + prefix check).
   //
   // Null bytes in a path cause silent truncation in C string APIs; reject them.
   assert(dns_file_path.find('\0') == std::string_view::npos &&
