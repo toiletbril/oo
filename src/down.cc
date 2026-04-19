@@ -40,6 +40,8 @@ fn down(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case("oo down [-options] <namespace>",
                    "Stop the daemon and tear down the namespace.");
 
+  let &flag_timeout = cli.add_flag<cli::flag_string>(
+      '\0', "timeout", "Seconds to wait for graceful shutdown. Default: 10.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -52,6 +54,17 @@ fn down(cli::cli &&cli) -> error_or<ok> {
   if (args.empty()) {
     return make_error(
         "Missing namespace name. Try '--help' for more information.");
+  }
+
+  usize timeout_s = 10;
+  if (flag_timeout.is_set()) {
+    const std::string timeout_str{flag_timeout.get_value()};
+    char *end = nullptr;
+    unsigned long parsed = strtoul(timeout_str.c_str(), &end, 10);
+    if (end == timeout_str.c_str() || *end != '\0') {
+      return make_error("Invalid --timeout value: " + timeout_str);
+    }
+    timeout_s = static_cast<usize>(parsed);
   }
 
   unwrap(ensure_runtime_dir_exists());
@@ -76,7 +89,8 @@ fn down(cli::cli &&cli) -> error_or<ok> {
             s.get_daemon_pid());
       unwrap(linux::oo_kill(s.get_daemon_pid(), SIGTERM));
 
-      for (usize i = 0; i < constants::GRACEFUL_SHUTDOWN_ITERATIONS; ++i) {
+      let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
+      for (usize i = 0; i < iterations; ++i) {
         if (!pid_tracker::is_alive(s.get_daemon_pid())) {
           trace(verbosity::debug, "Daemon terminated gracefully");
           break;
