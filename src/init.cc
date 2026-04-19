@@ -11,7 +11,8 @@
 namespace oo {
 
 fn init(cli::cli &&cli) -> error_or<ok> {
-  cli.add_use_case("oo init [-options]", "todo");
+  cli.add_use_case("oo init [-options]",
+                   "Set file capabilities on the binary (requires root).");
 
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 

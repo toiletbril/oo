@@ -38,6 +38,8 @@ private:
   fn enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>;
 
   static constexpr const char *PID_FILE = "pids.ini";
+  static constexpr const char *STDOUT_LOG = "stdout";
+  static constexpr const char *STDERR_LOG = "stderr";
 };
 
 } // namespace oo

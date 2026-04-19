@@ -37,7 +37,8 @@ static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf)
 }
 
 fn down(cli::cli &&cli) -> error_or<ok> {
-  cli.add_use_case("oo down [-options] <namespace>", "todo");
+  cli.add_use_case("oo down [-options] <namespace>",
+                   "Stop the daemon and tear down the namespace.");
 
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 

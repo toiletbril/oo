@@ -17,16 +17,13 @@ namespace oo {
 
 fn up(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case(
-      "oo up [-options] <namespace> [--] <daemon> [daemon-args...]", "todo");
+      "oo up [-options] <namespace> [--] <daemon> [daemon-args...]",
+      "Start a daemon in a new network namespace.");
 
   let &flag_dns = cli.add_flag<cli::flag_many_strings>(
-      '\0', "dns",
-      "Add an entry to resolv.conf inside the namespace. Can be "
-      "specified multiple times to add multiple DNS servers.");
+      '\0', "dns", "Append a nameserver to resolv.conf. Repeatable.");
   let &flag_resolv_conf_path = cli.add_flag<cli::flag_string>(
-      '\0', "dns-file",
-      "Path to a file to mount as /etc/resolv.conf inside the namespace. "
-      "Overrides --dns if both are specified.");
+      '\0', "dns-file", "Mount a file as /etc/resolv.conf. Overrides --dns.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -92,6 +89,14 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   unwrap(netconf.initial_setup());
 
   unwrap(ns.create_dir());
+
+  if (flag_resolv_conf_path.is_set() || !flag_dns.is_empty()) {
+    if (std::filesystem::exists("/var/run/nscd/socket") ||
+        std::filesystem::exists("/run/nscd/socket")) {
+      cli::show_message(
+          "warning: nscd is running; custom DNS may be ignored by the daemon");
+    }
+  }
 
   dominatrix dns(ns);
   if (flag_resolv_conf_path.is_set()) {

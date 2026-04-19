@@ -64,6 +64,23 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
       }
     }
 
+    if (let log_dir = ns.get_path(); !log_dir.is_err()) {
+      std::string out_path = (log_dir.get_value() / satan::STDOUT_LOG).string();
+      std::string err_path = (log_dir.get_value() / satan::STDERR_LOG).string();
+      int out_fd =
+          ::open(out_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+      if (out_fd >= 0) {
+        ::dup2(out_fd, STDOUT_FILENO);
+        ::close(out_fd);
+      }
+      int err_fd =
+          ::open(err_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+      if (err_fd >= 0) {
+        ::dup2(err_fd, STDERR_FILENO);
+        ::close(err_fd);
+      }
+    }
+
     trace(verbosity::debug, "Executing daemon: {}", daemonized_argv[0]);
     unwrap(linux::oo_exec(daemonized_argv));
     unreachable();

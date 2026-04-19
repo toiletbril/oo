@@ -11,7 +11,7 @@ namespace oo {
 
 fn exec(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case("oo exec [-options] <namespace> [--] <command> [args...]",
-                   "todo");
+                   "Run a command inside a running namespace.");
 
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
