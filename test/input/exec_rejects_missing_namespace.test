@@ -1,0 +1,9 @@
+#!/bin/sh
+# Verify that `oo exec` on a namespace that was never up produces a clean
+# error rather than crashing or entering an undefined state.
+
+NS="nope"
+
+../oo down "$NS" 2>/dev/null || true
+
+../oo exec "$NS" -- /bin/true 2>&1 | head -n 1

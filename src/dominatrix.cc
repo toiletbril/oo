@@ -43,7 +43,7 @@ fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok>
   // path resolves to an approved directory (e.g. via realpath + prefix check).
   //
   // Null bytes in a path cause silent truncation in C string APIs; reject them.
-  assert(dns_file_path.find('\0') == std::string_view::npos &&
+  insist(dns_file_path.find('\0') == std::string_view::npos &&
          "DNS file path must not contain null bytes");
   m_dns_file_path = dns_file_path;
   trace(verbosity::debug, "Set DNS file path: {}", dns_file_path);

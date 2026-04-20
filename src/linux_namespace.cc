@@ -46,7 +46,6 @@ fn linux_namespace::validate_name() -> error_or<ok>
     }
   }
 
-  assert(m_name.size() <= MAX_NS_NAME_LEN);
   return ok{};
 }
 

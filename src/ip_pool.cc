@@ -42,11 +42,6 @@ ip_pool::ip_pool(linux_namespace &ns)
           r.get_error().get_reason());
   }
 
-  if (let r = m_file.load(); r.is_err()) {
-    trace(verbosity::error, "Failed to load IP pool file: {}",
-          r.get_error().get_reason());
-  }
-
   m_file.set_header(
       "IP Pool allocation state\nFormat: <subnet>=<namespace_name>");
 }
@@ -80,6 +75,7 @@ fn ip_pool::allocate() -> error_or<subnet>
   if (!m_lock.is_held()) {
     return make_error("Cannot allocate: IP pool lock not held");
   }
+  unwrap(m_file.load());
 
   std::array<bool, POOL_SIZE> taken{};
   for (const let &e : m_file.entries()) {
@@ -105,6 +101,7 @@ fn ip_pool::free(subnet s) -> error_or<ok>
   if (!m_lock.is_held()) {
     return make_error("Cannot free: IP pool lock not held");
   }
+  unwrap(m_file.load());
 
   let key = s.to_string();
   let owner = m_file.find(key);

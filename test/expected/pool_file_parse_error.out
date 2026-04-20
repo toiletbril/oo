@@ -1,0 +1,2 @@
+oo: error: Missing '=' .*no-equals-sign
+oo: error: Malformed section header .*unclosed

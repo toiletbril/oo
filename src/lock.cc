@@ -29,6 +29,7 @@ file_lock::~file_lock()
 
 fn file_lock::acquire() -> error_or<ok>
 {
+  insist(!m_path.empty(), "file_lock constructed with empty path");
   if (m_fd >= 0) {
     return make_error("Lock already held on " + m_path.string());
   }
@@ -38,6 +39,7 @@ fn file_lock::acquire() -> error_or<ok>
     return make_error("Could not open lock file: " + m_path.string() + ": " +
                       linux::get_errno_string());
   }
+  insist(m_fd >= 0, "open returned a valid fd then went negative");
 
   struct flock fl{};
   fl.l_type = F_WRLCK;
@@ -49,6 +51,7 @@ fn file_lock::acquire() -> error_or<ok>
   }
 
   let pid = std::to_string(getpid());
+  insist(!pid.empty(), "getpid produced empty string");
   unwrap(oo_linux_syscall(write, m_fd, pid.data(), pid.length()));
 
   trace(verbosity::debug, "Acquired lock on {}", m_path.string());
@@ -60,6 +63,7 @@ fn file_lock::release() -> error_or<ok>
   if (m_fd < 0) {
     return make_error("No lock held on " + m_path.string());
   }
+  insist(!m_path.empty(), "file_lock has an fd but no path");
 
   ::close(m_fd);
   m_fd = -1;

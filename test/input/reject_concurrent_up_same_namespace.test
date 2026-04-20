@@ -1,0 +1,13 @@
+#!/bin/sh
+# Verify that `oo up` refuses to start a second daemon when one is already
+# running in the same namespace. Covers the living-daemon branch in up.cc.
+
+NS="du"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+../oo up "$NS" -- sleep 30 2>/dev/null
+
+../oo up "$NS" -- sleep 5 2>&1 | head -n 1

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Verify that --dns rejects values that are not valid IP addresses. A crafted
+# value with a newline must not sneak extra lines into resolv.conf.
+
+NS="di"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+../oo up "$NS" --dns "1.1.1.1
+malicious=line" -- sleep 1 2>&1 | grep -E '^oo: error:' | head -n 1

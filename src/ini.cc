@@ -38,6 +38,8 @@ ini_file::~ini_file()
 
 fn ini_file::load() -> error_or<ok>
 {
+  insist(!m_path.empty(), "ini_file constructed with empty path");
+
   m_entries.clear();
   m_loaded = true;
   m_dirty = false;
@@ -87,6 +89,8 @@ fn ini_file::load() -> error_or<ok>
     }
 
     m_entries.push_back(entry{std::string{key}, std::string{value}});
+    insist(!m_entries.back().key.empty(),
+           "parser pushed an entry with empty key");
   }
 
   trace(verbosity::debug, "Loaded {} entries from {}", m_entries.size(),
