@@ -1,1 +1,1 @@
-oo: error: Namespace 'nope' is not running
+exec on missing namespace: rejected.*ok

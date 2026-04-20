@@ -1,15 +1,26 @@
 #!/bin/sh
-# Verify that invalid namespace names are rejected with the correct errors.
-# Each call is expected to fail; errors go to stderr and are captured via 2>&1.
+# Verify that invalid namespace names are rejected. Errors go to stderr
+# (captured to trace.log by the Makefile); each case prints an ok/FAILED
+# line to stdout based on exit status.
+
+check_rejected() {
+  label=$1
+  shift
+  if "$BIN" $FLAGS up "$@"; then
+    echo "$label: accepted (FAILED)"
+  else
+    echo "$label: rejected (ok)"
+  fi
+}
 
 # Name longer than MAX_NS_NAME_LEN=5.
-../oo up "toolong" -- sleep 0 2>&1 || true
+check_rejected "toolong" "toolong" -- sleep 0
 
 # Slash in name (path traversal).
-../oo up "fo/o" -- sleep 0 2>&1 || true
+check_rejected "slash"   "fo/o"    -- sleep 0
 
 # Invalid character.
-../oo up "fo!o" -- sleep 0 2>&1 || true
+check_rejected "invalid" "fo!o"    -- sleep 0
 
 # Empty name.
-../oo up "" -- sleep 0 2>&1 || true
+check_rejected "empty"   ""        -- sleep 0

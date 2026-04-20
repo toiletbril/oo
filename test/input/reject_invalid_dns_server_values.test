@@ -4,9 +4,13 @@
 
 NS="di"
 
-cleanup() { ../oo down "$NS" 2>/dev/null || true; }
-../oo down "$NS" 2>/dev/null || true
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-../oo up "$NS" --dns "1.1.1.1
-malicious=line" -- sleep 1 2>&1 | grep -E '^oo: error:' | head -n 1
+if "$BIN" $FLAGS up "$NS" --dns "1.1.1.1
+malicious=line" -- sleep 1; then
+  echo "accepted malicious dns: FAILED"
+else
+  echo "rejected malicious dns: ok"
+fi

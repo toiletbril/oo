@@ -4,19 +4,19 @@
 
 NS="ic"
 
-cleanup() { ../oo down "$NS" 2>/dev/null || true; }
-../oo down "$NS" 2>/dev/null || true
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 3 2>/dev/null
+"$BIN" $FLAGS up "$NS" -- sleep 3
 
-if ip link show "veth-${NS}-host" >/dev/null 2>&1; then
+if ip link show "veth-${NS}-host" >/dev/null; then
   echo "host veth veth-${NS}-host: ok"
 else
   echo "host veth veth-${NS}-host: FAILED"
 fi
 
-if ../oo exec "$NS" -- ip link show "veth-${NS}-ns" >/dev/null 2>&1; then
+if "$BIN" $FLAGS exec "$NS" -- ip link show "veth-${NS}-ns" >/dev/null; then
   echo "ns veth veth-${NS}-ns: ok"
 else
   echo "ns veth veth-${NS}-ns: FAILED"

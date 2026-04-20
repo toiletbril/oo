@@ -14,8 +14,8 @@ namespace oo {
 // /proc/<pid>/stat fields are whitespace-separated but field 2 (comm) is
 // wrapped in parens and may contain whitespace or more parens. Skip past the
 // last ')' and then scan whitespace-separated fields from there; field 22
-// (starttime) is the 20th field after that point.
-static fn parse_starttime(const std::string &content) -> error_or<u64>
+// (start_time) is the 20th field after that point.
+static fn parse_start_time(const std::string &content) -> error_or<u64>
 {
   let rparen = content.rfind(')');
   if (rparen == std::string::npos) {
@@ -32,16 +32,16 @@ static fn parse_starttime(const std::string &content) -> error_or<u64>
   errno = 0;
   unsigned long long v = std::strtoull(field.c_str(), &end, 10);
   if (end == field.c_str() || *end != '\0' || errno != 0) {
-    return make_error("non-numeric starttime in /proc/<pid>/stat: " + field);
+    return make_error("non-numeric start_time in /proc/<pid>/stat: " + field);
   }
   return static_cast<u64>(v);
 }
 
-fn pid_tracker::read_starttime(pid_t pid) -> error_or<u64>
+fn pid_tracker::read_start_time(pid_t pid) -> error_or<u64>
 {
   trace_variables(verbosity::all, pid);
   if (pid <= 0) {
-    return make_error("read_starttime requires a positive pid");
+    return make_error("read_start_time requires a positive pid");
   }
   std::ifstream file("/proc/" + std::to_string(pid) + "/stat");
   if (!file.is_open()) {
@@ -49,17 +49,17 @@ fn pid_tracker::read_starttime(pid_t pid) -> error_or<u64>
   }
   std::string content((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
-  return parse_starttime(content);
+  return parse_start_time(content);
 }
 
-fn pid_tracker::is_alive_with_starttime(pid_t pid, u64 expected_starttime)
+fn pid_tracker::is_alive_with_start_time(pid_t pid, u64 expected_start_time)
     -> bool
 {
-  trace_variables(verbosity::all, pid, expected_starttime);
+  trace_variables(verbosity::all, pid, expected_start_time);
   if (pid <= 0) return false;
-  let actual = read_starttime(pid);
+  let actual = read_start_time(pid);
   if (actual.is_err()) return false;
-  return actual.get_value() == expected_starttime;
+  return actual.get_value() == expected_start_time;
 }
 
 fn pid_tracker::is_alive_and_matches(pid_t pid,

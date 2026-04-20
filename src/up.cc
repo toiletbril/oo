@@ -1,7 +1,6 @@
 #include "up.hh"
 
 #include "cli.hh"
-#include "constants.hh"
 #include "debug.hh"
 #include "dominatrix.hh"
 #include "ip_pool.hh"
@@ -58,9 +57,9 @@ fn up(cli::cli &&cli) -> error_or<ok>
 
   satan existing_satan{ns};
   if (!existing_satan.load().is_err()) {
-    if (pid_tracker::is_alive_with_starttime(
+    if (pid_tracker::is_alive_with_start_time(
             existing_satan.get_daemon_pid(),
-            existing_satan.get_daemon_starttime()))
+            existing_satan.get_daemon_start_time()))
     {
       return make_error("Namespace '" + ns_name +
                         "' already has a running daemon (PID " +
@@ -133,6 +132,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
   daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
   insist(daemon_pid > 0,
          "spawn_daemon returned success without a valid daemon PID");
+
+  s.set_daemon_start_time(unwrap(pid_tracker::read_start_time(daemon_pid)));
 
   unwrap(netconf.finish_setup(daemon_pid));
 

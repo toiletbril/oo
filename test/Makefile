@@ -1,16 +1,27 @@
 BIN := ../oo
 FLAGS := -vvvvv
 
+export BIN
+export FLAGS
+
 FAILED_LIST := failed.diff
+TRACE_LOG := trace.log
 INPUT_FILES := $(wildcard input/*.test)
 
 TEST_NAMES := $(INPUT_FILES:input/%.test=%)
 
 %: expected/%.out
-	sh input/$@.test 2>&1 | \
-	bash comparator.sh $< >> $(FAILED_LIST) && \
-	printf "	%-42s ok\n" $@ || \
-	printf "	%-42s FAILED :c\n" $@
+	tmp=$$(mktemp); \
+	sh input/$@.test 2>"$$tmp" | \
+	bash comparator.sh $< >> $(FAILED_LIST); \
+	rc=$$?; \
+	( flock 9; printf "===== %s =====\n" $@; cat "$$tmp"; ) 9>> $(TRACE_LOG).lock >> $(TRACE_LOG); \
+	rm -f "$$tmp"; \
+	if [ $$rc -eq 0 ]; then \
+		printf "	%-42s ok\n" $@; \
+	else \
+		printf "	%-42s FAILED :c\n" $@; \
+	fi
 
 setup_and_run_tests:
 	if ! getcap $(BIN) 2>/dev/null | grep -q cap_sys_admin; then \
@@ -20,7 +31,7 @@ setup_and_run_tests:
 	fi
 
 clean:
-	@rm -f $(FAILED_LIST)
+	@rm -f $(FAILED_LIST) $(TRACE_LOG) $(TRACE_LOG).lock
 
 test: $(BIN)
 	$(MAKE) -B clean

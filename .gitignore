@@ -11,3 +11,5 @@ core.*
 r.sh
 /.cache/clangd/index
 /compile_commands.json
+/test/trace.log.lock
+/test/trace.log

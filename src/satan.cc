@@ -13,6 +13,7 @@
 
 #include <csignal>
 #include <fcntl.h>
+#include <filesystem>
 #include <sched.h>
 #include <sys/wait.h>
 
@@ -49,7 +50,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     char actual_cwd[PATH_MAX];
     insist(::getcwd(actual_cwd, sizeof(actual_cwd)) != nullptr,
            "getcwd failed after chdir to namespace directory");
-    insist(expected_cwd.string() == actual_cwd,
+    std::error_code cwd_ec;
+    insist(std::filesystem::equivalent(expected_cwd, actual_cwd, cwd_ec),
            "chdir returned success but cwd is not the namespace directory");
 
     trace(verbosity::debug, "Forking daemon process");
@@ -252,7 +254,7 @@ fn satan::save() const -> error_or<ok>
   file.set_header("Process state");
   file.set("daemon_pid", std::to_string(m_daemon_pid));
   file.set("child_pid", std::to_string(m_child_pid));
-  file.set("daemon_starttime", std::to_string(m_daemon_starttime));
+  file.set("daemon_start_time", std::to_string(m_daemon_start_time));
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
@@ -281,9 +283,9 @@ fn satan::load() -> error_or<ok>
     insist(!v->empty(), "child_pid entry must have a non-empty value");
     m_child_pid = std::stoi(*v);
   }
-  if (let v = file.find("daemon_starttime")) {
-    insist(!v->empty(), "daemon_starttime entry must have a non-empty value");
-    m_daemon_starttime = std::stoull(*v);
+  if (let v = file.find("daemon_start_time")) {
+    insist(!v->empty(), "daemon_start_time entry must have a non-empty value");
+    m_daemon_start_time = std::stoull(*v);
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
@@ -303,7 +305,8 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
 
-  if (!pid_tracker::is_alive_with_starttime(m_daemon_pid, m_daemon_starttime)) {
+  if (!pid_tracker::is_alive_with_start_time(m_daemon_pid, m_daemon_start_time))
+  {
     trace(verbosity::error, "Daemon has stale PID {}.", m_daemon_pid);
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }

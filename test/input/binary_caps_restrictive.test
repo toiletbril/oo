@@ -5,7 +5,7 @@
 
 BIN="../oo"
 
-CAPS=$(getcap "$BIN" 2>/dev/null)
+CAPS=$(getcap "$BIN")
 if test -z "$CAPS"; then
   echo "getcap output: empty (FAILED)"
   exit 0

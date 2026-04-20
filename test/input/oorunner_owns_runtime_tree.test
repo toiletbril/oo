@@ -5,11 +5,11 @@
 
 NS="or"
 
-cleanup() { ../oo down "$NS" 2>/dev/null || true; }
-../oo down "$NS" 2>/dev/null || true
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-OORUNNER_UID=$(id -u oorunner 2>/dev/null)
+OORUNNER_UID=$(id -u oorunner)
 if test -z "$OORUNNER_UID"; then
   echo "oorunner account: missing (FAILED)"
   exit 0
@@ -23,7 +23,7 @@ else
   echo "/var/run/oo owner: $PARENT_OWNER (FAILED)"
 fi
 
-../oo up "$NS" -- sleep 3 2>/dev/null
+"$BIN" $FLAGS up "$NS" -- sleep 3
 
 NS_OWNER=$(stat -c '%U' "/var/run/oo/$NS")
 if test "$NS_OWNER" = "oorunner"; then

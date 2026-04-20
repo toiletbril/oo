@@ -27,6 +27,7 @@ ENVCXXFLAGS := $(CXXFLAGS)
 override undefine CXXFLAGS
 
 DEFINES := \
+	-D_FORTIFY_SOURCE=2 \
 	-DCOMPILER_COMMAND="\"$(CXX)\"" \
 	-DOS_INFO="\"$(OS_INFO)\"" \
 	-DCOMMIT_HASH="\"$(COMMIT_HASH)\"" \
@@ -45,8 +46,7 @@ WARNINGS := \
 	-Wno-unused-command-line-argument \
 	-Wno-deprecated \
 	-Wno-date-time \
-	-Wno-unknown-warning-option \
-	-Wno-error=maybe-uninitialized
+	-Wno-unknown-warning-option
 
 CXXFLAGS := \
 	-std=c++23 \
@@ -78,14 +78,14 @@ CXXFLAGS += \
 	-fno-omit-frame-pointer \
 	-fsanitize=undefined \
 	-g3 \
-	-O0
+	-Og
 else ifeq ($(MODE), asan)
 CXXFLAGS += \
 	-fno-omit-frame-pointer \
 	-g3 \
 	-fsanitize=undefined \
 	-fsanitize=address \
-	-O0
+	-Og
 else ifeq ($(MODE), prof)
 CXXFLAGS += \
 	-g3 \

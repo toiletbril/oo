@@ -4,11 +4,11 @@
 
 NS="cl"
 
-cleanup() { ../oo down "$NS" 2>/dev/null || true; }
-../oo down "$NS" 2>/dev/null || true
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 5 2>/dev/null
+"$BIN" $FLAGS up "$NS" -- sleep 5
 
 DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 STATUS="/proc/$DAEMON_PID/status"

@@ -4,6 +4,10 @@
 
 NS="nope"
 
-../oo down "$NS" 2>/dev/null || true
+"$BIN" $FLAGS down "$NS" || true
 
-../oo exec "$NS" -- /bin/true 2>&1 | head -n 1
+if "$BIN" $FLAGS exec "$NS" -- /bin/true; then
+  echo "exec on missing namespace: accepted (FAILED)"
+else
+  echo "exec on missing namespace: rejected (ok)"
+fi
