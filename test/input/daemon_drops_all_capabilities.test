@@ -8,7 +8,7 @@ cleanup() { ../oo down "$NS" 2>/dev/null || true; }
 ../oo down "$NS" 2>/dev/null || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 30 2>/dev/null
+../oo up "$NS" -- sleep 5 2>/dev/null
 
 DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 STATUS="/proc/$DAEMON_PID/status"

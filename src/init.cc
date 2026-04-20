@@ -2,6 +2,7 @@
 
 #include "caps.hh"
 #include "cli.hh"
+#include "common.hh"
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -78,8 +79,32 @@ fn init(cli::cli &&cli) -> error_or<ok>
   unwrap(oo_error_code(ec, std::string{"Failed to set permissions on "}.append(
                                constants::OO_RUN_DIR)));
 
-  trace(verbosity::info, "Updated {} to oorunner:oorunner 0755",
+  // SECURITY: Self-heal. If this machine ran a pre-refactor oo, the parent
+  // dir may contain entries owned by the invoking user or root with 0700
+  // perms. Recursively reset ownership to oorunner so the new runtime
+  // model can actually read and write them. Children are *not* chmod'ed
+  // here; `oo up` will set correct perms when it recreates them, and the
+  // user can always `oo down` and `oo up` again to resync a single ns.
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(constants::OO_RUN_DIR, ec))
+  {
+    if (ec) {
+      return make_error("Failed to enumerate " +
+                        std::string{constants::OO_RUN_DIR} + ": " +
+                        ec.message());
+    }
+    unwrap(oo_linux_syscall(lchown, entry.path().c_str(), oor.uid, oor.gid));
+  }
+
+  trace(verbosity::info, "Updated {} to oorunner:oorunner 0755 (recursive)",
         constants::OO_RUN_DIR);
+
+  // SECURITY: Final check -- ensure_runtime_dir_exists asserts that the
+  // parent dir is now oorunner-owned. Any future code path that bypasses
+  // init and leaves the dir in a bad state will trip this in `oo up`,
+  // but catching it here too means init won't silently "succeed" on a
+  // broken setup.
+  unwrap(ensure_runtime_dir_exists());
 
   return ok{};
 }

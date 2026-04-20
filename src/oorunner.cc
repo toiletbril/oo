@@ -4,6 +4,7 @@
 #include "debug.hh"
 #include "linux_util.hh"
 
+#include <array>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -32,39 +33,53 @@ fn lookup() -> error_or<credentials>
   return credentials{pw->pw_uid, pw->pw_gid};
 }
 
-// SECURITY: We walk /etc/passwd via getpwent and pick the next free uid in
-// the system range [100, 999]. This is conservative; distros vary (some
-// systems reserve up to 499 or 999). If the range is exhausted we bail
-// rather than stepping on a regular user.
+// SECURITY: Pick the first unused uid in the system range [100, 999] by
+// scanning /etc/passwd and /etc/group via libc. We search from the top
+// down (999..100) so the chosen uid is least likely to collide with a
+// future distro-managed system account, which distros conventionally
+// allocate upward from SYS_UID_MIN.
 static fn pick_system_uid() -> error_or<uid_t>
 {
   constexpr uid_t SYSTEM_UID_MIN = 100;
   constexpr uid_t SYSTEM_UID_MAX = 999;
+  constexpr usize RANGE_SIZE = SYSTEM_UID_MAX - SYSTEM_UID_MIN + 1;
 
-  uid_t highest = SYSTEM_UID_MIN - 1;
+  std::array<bool, RANGE_SIZE> taken{};
 
   ::setpwent();
-  defer { ::endpwent(); };
-
   errno = 0;
   while (struct passwd *pw = ::getpwent()) {
-    if (pw->pw_uid >= SYSTEM_UID_MIN && pw->pw_uid <= SYSTEM_UID_MAX &&
-        pw->pw_uid > highest)
-    {
-      highest = pw->pw_uid;
+    if (pw->pw_uid >= SYSTEM_UID_MIN && pw->pw_uid <= SYSTEM_UID_MAX) {
+      taken[pw->pw_uid - SYSTEM_UID_MIN] = true;
     }
     errno = 0;
   }
+  ::endpwent();
   if (errno != 0) {
     return make_error("`getpwent` failed: " + linux::get_errno_string());
   }
 
-  if (highest >= SYSTEM_UID_MAX) {
-    return make_error(
-        "Could not pick a system uid: range [100, 999] is exhausted.");
+  ::setgrent();
+  errno = 0;
+  while (struct group *gr = ::getgrent()) {
+    if (gr->gr_gid >= SYSTEM_UID_MIN && gr->gr_gid <= SYSTEM_UID_MAX) {
+      taken[gr->gr_gid - SYSTEM_UID_MIN] = true;
+    }
+    errno = 0;
+  }
+  ::endgrent();
+  if (errno != 0) {
+    return make_error("`getgrent` failed: " + linux::get_errno_string());
   }
 
-  return static_cast<uid_t>(highest + 1);
+  for (usize i = RANGE_SIZE; i-- > 0;) {
+    if (!taken[i]) {
+      return static_cast<uid_t>(SYSTEM_UID_MIN + i);
+    }
+  }
+
+  return make_error(
+      "Could not pick a system uid: range [100, 999] is exhausted.");
 }
 
 static fn append_group(uid_t gid) -> error_or<ok>

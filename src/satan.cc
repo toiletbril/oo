@@ -131,7 +131,10 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     insist(daemon_pid > 0, "start_daemon must return a valid child PID");
 
     // SECURITY: Namespace setup is complete; monitoring process only waits.
-    // Clears CapEff and CapInh so the reaper holds no elevated privileges.
+    // Switch back to the invoking user so `ps` shows the monitor under
+    // the human's uid (not oorunner), and clear caps so the reaper holds
+    // no elevated privileges.
+    unused(privilege_drop::switch_to_user(g_invoking_uid, g_invoking_gid));
     unused(caps::drop_for_exec());
 
     let ok_msg = std::string{constants::DAEMON_MSG_OK} +

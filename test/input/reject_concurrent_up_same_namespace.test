@@ -8,6 +8,6 @@ cleanup() { ../oo down "$NS" 2>/dev/null || true; }
 ../oo down "$NS" 2>/dev/null || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 30 2>/dev/null
+../oo up "$NS" -- sleep 3 2>/dev/null
 
-../oo up "$NS" -- sleep 5 2>&1 | head -n 1
+../oo up "$NS" -- sleep 3 2>&1 | head -n 1

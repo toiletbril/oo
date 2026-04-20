@@ -8,7 +8,7 @@ cleanup() { ../oo down "$NS" 2>/dev/null || true; }
 ../oo down "$NS" 2>/dev/null || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 30 2>/dev/null
+../oo up "$NS" -- sleep 3 2>/dev/null
 
 if ip link show "veth-${NS}-host" >/dev/null 2>&1; then
   echo "host veth veth-${NS}-host: ok"

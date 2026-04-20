@@ -13,8 +13,8 @@ cleanup() {
 ../oo down "$NS2" 2>/dev/null || true
 trap cleanup EXIT
 
-../oo up "$NS1" -- sleep 30 2>/dev/null &
-../oo up "$NS2" -- sleep 30 2>/dev/null &
+../oo up "$NS1" -- sleep 2 2>/dev/null &
+../oo up "$NS2" -- sleep 2 2>/dev/null &
 wait
 
 SUB1=$(grep '^subnet_octet=' "/var/run/oo/$NS1/network.ini" 2>/dev/null | cut -d= -f2)

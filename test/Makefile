@@ -13,7 +13,7 @@ TEST_NAMES := $(INPUT_FILES:input/%.test=%)
 	printf "	%-42s FAILED :c\n" $@
 
 setup_and_run_tests:
-	@if ! getcap $(BIN) 2>/dev/null | grep -q cap_sys_admin; then \
+	if ! getcap $(BIN) 2>/dev/null | grep -q cap_sys_admin; then \
 		printf "Capabilities not set. Skipping tests.\n" $(BIN) >&2; \
 	else \
 		$(MAKE) run_tests; \
@@ -23,9 +23,9 @@ clean:
 	@rm -f $(FAILED_LIST)
 
 test: $(BIN)
-	@$(MAKE) -B clean
-	@$(MAKE) -B setup_and_run_tests
-	@test -f $(FAILED_LIST) && cat $(FAILED_LIST) || true
+	$(MAKE) -B clean
+	$(MAKE) -B setup_and_run_tests
+	test -f $(FAILED_LIST) && cat $(FAILED_LIST) || true
 
 run_tests: $(TEST_NAMES)
 

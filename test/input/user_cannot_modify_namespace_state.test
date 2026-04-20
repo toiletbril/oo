@@ -9,7 +9,7 @@ cleanup() { ../oo down "$NS" 2>/dev/null || true; }
 ../oo down "$NS" 2>/dev/null || true
 trap cleanup EXIT
 
-../oo up "$NS" -- sleep 30 2>/dev/null
+../oo up "$NS" -- sleep 3 2>/dev/null
 
 PIDS="/var/run/oo/$NS/pids.ini"
 
@@ -19,19 +19,19 @@ else
   echo "user reads pids.ini: denied (FAILED)"
 fi
 
-if echo hi >> "$PIDS" 2>/dev/null; then
+if { echo hi >> "$PIDS"; } 2>/dev/null; then
   echo "user writes pids.ini: allowed (FAILED)"
 else
   echo "user writes pids.ini: denied (ok)"
 fi
 
-if touch "/var/run/oo/$NS/evil" 2>/dev/null; then
+if { touch "/var/run/oo/$NS/evil"; } 2>/dev/null; then
   echo "user creates file in ns dir: allowed (FAILED)"
 else
   echo "user creates file in ns dir: denied (ok)"
 fi
 
-if touch "/var/run/oo/evil" 2>/dev/null; then
+if { touch "/var/run/oo/evil"; } 2>/dev/null; then
   echo "user creates file in runtime dir: allowed (FAILED)"
 else
   echo "user creates file in runtime dir: denied (ok)"

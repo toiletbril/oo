@@ -17,7 +17,7 @@ else
   echo "/var/run/oo perms: $PARENT_PERMS (FAILED)"
 fi
 
-../oo up "$NS" -- sleep 30 2>/dev/null
+../oo up "$NS" -- sleep 3 2>/dev/null
 
 NS_PERMS=$(stat -c '%a' "/var/run/oo/$NS")
 if test "$NS_PERMS" = "755"; then

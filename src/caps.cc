@@ -30,9 +30,13 @@ namespace caps {
 //   CAP_SYS_PTRACE -> setns() into another process's namespace
 //   CAP_SETUID (UNSAFE) -> allows setuid(0) in forked iptables children and
 //                    the initial switch to oorunner at runtime entry
+//   CAP_SETGID     -> paired with CAP_SETUID for setresgid/setgroups on
+//                    the oorunner transition and the drop back to the
+//                    invoking user before exec
 //   CAP_SYS_CHROOT -> setns(mnt_fd, CLONE_NEWNS)
 static constexpr cap_value_t CAP_LIST[] = {
-    CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE, CAP_SETUID, CAP_SYS_CHROOT,
+    CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE,
+    CAP_SETUID,    CAP_SETGID,    CAP_SYS_CHROOT,
 };
 
 // Compile-time guard: fires if CAP_SETUID is accidentally removed. It is
