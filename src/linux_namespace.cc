@@ -4,6 +4,7 @@
 #include "debug.hh"
 #include "linux_util.hh"
 #include "network_configurator.hh"
+#include "oorunner.hh"
 
 #include <cassert>
 #include <cctype>
@@ -70,12 +71,23 @@ fn linux_namespace::create_dir() -> error_or<ok>
                       "': " + ec.message());
   }
 
-  // Set ownership to current user so non-root users own their namespaces.
-  unwrap(oo_linux_syscall(chown, path.c_str(), getuid(), getgid()));
+  // SECURITY: The directory is owned by oorunner. The oo binary has already
+  // switched to that user, so the chown here is a no-op on the uid front but
+  // is kept explicit so the permissions are unambiguous to anyone auditing
+  // this code.
+  let oor = unwrap(oorunner::lookup());
+  unwrap(oo_linux_syscall(chown, path.c_str(), oor.uid, oor.gid));
 
-  // Set restrictive permissions so only the creator can access.
+  // SECURITY: 0755 lets the invoking user read their namespace state
+  // (pids.ini, stdout, stderr) but not modify it. Only oorunner has write
+  // access. Do NOT widen to 0775 or 0777 -- other users would gain write
+  // access to namespace state that drives process-lifecycle decisions.
+  using perms = std::filesystem::perms;
   std::error_code perm_ec;
-  std::filesystem::permissions(path, std::filesystem::perms::owner_all,
+  std::filesystem::permissions(path,
+                               perms::owner_all | perms::group_read |
+                                   perms::group_exec | perms::others_read |
+                                   perms::others_exec,
                                perm_ec);
   unwrap(
       oo_error_code(perm_ec, "Failed to set permissions on " + path.string()));

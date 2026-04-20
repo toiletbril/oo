@@ -1,0 +1,7 @@
+has cap_sys_admin.*ok
+has cap_net_admin.*ok
+has cap_sys_ptrace.*ok
+has cap_setuid.*ok
+has cap_sys_chroot.*ok
+no cap_dac_override.*ok
+no cap_setpcap.*ok

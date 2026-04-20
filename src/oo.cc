@@ -6,11 +6,16 @@
 #include "error.hh"
 #include "exec.hh"
 #include "init.hh"
+#include "invoking_user.hh"
+#include "privilege_drop.hh"
 #include "up.hh"
 
 namespace oo {
 
 verbosity LOGGER_VERBOSITY = verbosity::nothing;
+
+uid_t g_invoking_uid = 0;
+gid_t g_invoking_gid = 0;
 
 static fn entry(cli::cli &&cli) -> error_or<ok>
 {
@@ -56,6 +61,17 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
   trace(verbosity::debug, "Executing {}", *subcommand);
 
   cli.reset_context();
+
+  // SECURITY: Every runtime subcommand runs as the oorunner system user,
+  // not as the invoking user and not as root. We do the transition here,
+  // once, so all dispatch paths share the same privilege posture. `init`
+  // must keep root (it writes file capabilities and edits /etc/passwd) and
+  // opts out.
+  const bool is_init_subcommand = *subcommand == "init" || *subcommand == "i";
+  if (!is_init_subcommand) {
+    unwrap(
+        privilege_drop::switch_to_oorunner(&g_invoking_uid, &g_invoking_gid));
+  }
 
   // clang-format off
   string_switch (*subcommand) {

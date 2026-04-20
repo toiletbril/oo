@@ -1,0 +1,28 @@
+#!/bin/sh
+# Verify the oo binary's file capabilities are the restrictive set --
+# CAP_DAC_OVERRIDE and CAP_SETPCAP were removed in the oorunner refactor,
+# and the remaining five must all be present.
+
+BIN="../oo"
+
+CAPS=$(getcap "$BIN" 2>/dev/null)
+if test -z "$CAPS"; then
+  echo "getcap output: empty (FAILED)"
+  exit 0
+fi
+
+for required in cap_sys_admin cap_net_admin cap_sys_ptrace cap_setuid cap_sys_chroot; do
+  if echo "$CAPS" | grep -q "$required"; then
+    echo "has $required (ok)"
+  else
+    echo "has $required: missing (FAILED)"
+  fi
+done
+
+for forbidden in cap_dac_override cap_setpcap; do
+  if echo "$CAPS" | grep -q "$forbidden"; then
+    echo "no $forbidden: present (FAILED)"
+  else
+    echo "no $forbidden (ok)"
+  fi
+done

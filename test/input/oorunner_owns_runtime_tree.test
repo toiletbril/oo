@@ -1,0 +1,40 @@
+#!/bin/sh
+# Verify that /var/run/oo and per-namespace subdirs are owned by the
+# 'oorunner' system user. This replaces the old model where subdirs were
+# owned by the invoking user and writes relied on CAP_DAC_OVERRIDE.
+
+NS="or"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+OORUNNER_UID=$(id -u oorunner 2>/dev/null)
+if test -z "$OORUNNER_UID"; then
+  echo "oorunner account: missing (FAILED)"
+  exit 0
+fi
+echo "oorunner account: present (ok)"
+
+PARENT_OWNER=$(stat -c '%U' /var/run/oo)
+if test "$PARENT_OWNER" = "oorunner"; then
+  echo "/var/run/oo owner: oorunner (ok)"
+else
+  echo "/var/run/oo owner: $PARENT_OWNER (FAILED)"
+fi
+
+../oo up "$NS" -- sleep 30 2>/dev/null
+
+NS_OWNER=$(stat -c '%U' "/var/run/oo/$NS")
+if test "$NS_OWNER" = "oorunner"; then
+  echo "namespace dir owner: oorunner (ok)"
+else
+  echo "namespace dir owner: $NS_OWNER (FAILED)"
+fi
+
+PIDS_OWNER=$(stat -c '%U' "/var/run/oo/$NS/pids.ini")
+if test "$PIDS_OWNER" = "oorunner"; then
+  echo "pids.ini owner: oorunner (ok)"
+else
+  echo "pids.ini owner: $PIDS_OWNER (FAILED)"
+fi

@@ -4,10 +4,12 @@
 #include "constants.hh"
 #include "debug.hh"
 #include "ini.hh"
+#include "invoking_user.hh"
 #include "linux_util.hh"
 #include "mountain.hh"
 #include "netlinker.hh"
 #include "pid_tracker.hh"
+#include "privilege_drop.hh"
 
 #include <csignal>
 #include <fcntl.h>
@@ -86,6 +88,13 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
         ::close(err_fd);
       }
     }
+
+    // SECURITY: Drop back to the invoking user before the final exec so
+    // the daemon process is owned by the human who ran `oo up`, not by
+    // the oorunner system account. The log files opened above were
+    // created while we were still oorunner, so they end up
+    // oorunner-owned 0644 -- readable by the invoking user.
+    unwrap(privilege_drop::switch_to_user(g_invoking_uid, g_invoking_gid));
 
     // SECURITY: Drop all capabilities before exec so the daemon process
     // starts with no elevated privileges. The daemon runs inside the
@@ -267,6 +276,10 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
         m_ns.get_name(), m_daemon_pid);
 
   unwrap(enter_namespace(m_daemon_pid, m_child_pid));
+
+  // SECURITY: Drop back to the invoking user before the final exec so
+  // the command runs under the user's uid, not oorunner.
+  unwrap(privilege_drop::switch_to_user(g_invoking_uid, g_invoking_gid));
 
   // SECURITY: Drop all capabilities before exec. setns() (enter_namespace)
   // already ran in this process using its file capabilities. The exec'd

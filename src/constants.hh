@@ -11,6 +11,17 @@ namespace constants {
 
 inline constexpr std::string OO_RUN_DIR = "/var/run/oo";
 
+// SECURITY: The oo binary runs as this dedicated system user for every
+// runtime subcommand so ordinary DAC checks authorize writes under
+// OO_RUN_DIR. The account is created by `oo init` with a locked password
+// and a nologin shell. CAP_DAC_OVERRIDE is intentionally not held, so
+// losing this account's ownership of OO_RUN_DIR bricks the tool until
+// `oo init` is re-run.
+inline constexpr std::string_view OORUNNER_NAME = "oorunner";
+inline constexpr std::string_view OORUNNER_SHELL = "/usr/sbin/nologin";
+inline constexpr std::string_view OORUNNER_GECOS = "oo runtime user";
+inline constexpr std::string_view OORUNNER_HOME = "/nonexistent";
+
 inline constexpr std::string PROC_SELF_EXE = "/proc/self/exe";
 inline constexpr std::string PROC_NET_ROUTE = "/proc/net/route";
 inline constexpr std::string_view PROC_IPV4_FORWARD =

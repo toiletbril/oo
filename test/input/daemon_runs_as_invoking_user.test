@@ -1,0 +1,31 @@
+#!/bin/sh
+# Verify that the daemon spawned by `oo up` runs as the invoking user, not
+# as oorunner. oo switches to oorunner for its own writes under
+# /var/run/oo but drops back before the final execvp of the user's
+# program.
+
+NS="du"
+
+cleanup() { ../oo down "$NS" 2>/dev/null || true; }
+../oo down "$NS" 2>/dev/null || true
+trap cleanup EXIT
+
+INVOKING_UID=$(id -u)
+OORUNNER_UID=$(id -u oorunner 2>/dev/null)
+
+../oo up "$NS" -- sleep 30 2>/dev/null
+
+DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+DAEMON_UID=$(awk '/^Uid:/ {print $2}' "/proc/$DAEMON_PID/status")
+
+if test "$DAEMON_UID" = "$INVOKING_UID"; then
+  echo "daemon uid matches invoking uid (ok)"
+else
+  echo "daemon uid=$DAEMON_UID want=$INVOKING_UID (FAILED)"
+fi
+
+if test "$DAEMON_UID" != "$OORUNNER_UID"; then
+  echo "daemon uid is not oorunner (ok)"
+else
+  echo "daemon uid is oorunner (FAILED)"
+fi

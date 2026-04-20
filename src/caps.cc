@@ -18,32 +18,26 @@ namespace caps {
 // target, iptables) inherit NONE of these capabilities. Call drop_for_exec()
 // in every child process before execvp.
 //
+// The oo runtime drops to the `oorunner` system user before doing any work
+// under /var/run/oo, so writes there are authorized by ordinary DAC -- NOT
+// by a permission-bypass capability. CAP_DAC_OVERRIDE is intentionally
+// absent. See privilege_drop.cc.
+//
 // Do not add capabilities to this list without a security review.
 // Removing an entry breaks the feature that needs it:
 //   CAP_SYS_ADMIN  -> unshare(CLONE_NEWNET|CLONE_NEWNS), setns()
 //   CAP_NET_ADMIN  -> netlink, routes, veth pair creation
 //   CAP_SYS_PTRACE -> setns() into another process's namespace
-//   CAP_DAC_OVERRIDE (UNSAFE) -> bypasses all DAC file permission checks;
-//                    needed to create dirs in /var/run/oo (root-owned 0755)
-//                    and to open /run/xtables.lock in iptables children via
-//                    setuid(0) -- but NOT via inherited caps.
-//   CAP_SETUID (UNSAFE) -> allows setuid(0) in forked iptables children
+//   CAP_SETUID (UNSAFE) -> allows setuid(0) in forked iptables children and
+//                    the initial switch to oorunner at runtime entry
 //   CAP_SYS_CHROOT -> setns(mnt_fd, CLONE_NEWNS)
-//   CAP_SETPCAP    -> modify capability bounding set in children
 static constexpr cap_value_t CAP_LIST[] = {
-    CAP_SYS_ADMIN, CAP_NET_ADMIN,  CAP_SYS_PTRACE, CAP_DAC_OVERRIDE,
-    CAP_SETUID,    CAP_SYS_CHROOT, CAP_SETPCAP,
+    CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE, CAP_SETUID, CAP_SYS_CHROOT,
 };
 
-// Compile-time guards: fire if the unsafe caps are accidentally removed.
-// Both are load-bearing; removing either breaks iptables child execution.
-static_assert(
-    [] {
-      for (auto c : CAP_LIST)
-        if (c == CAP_DAC_OVERRIDE) return true;
-      return false;
-    }(),
-    "CAP_DAC_OVERRIDE must remain in CAP_LIST");
+// Compile-time guard: fires if CAP_SETUID is accidentally removed. It is
+// load-bearing both for the initial switch to oorunner and for iptables
+// child execution.
 static_assert(
     [] {
       for (auto c : CAP_LIST)
@@ -51,6 +45,18 @@ static_assert(
       return false;
     }(),
     "CAP_SETUID must remain in CAP_LIST");
+
+// Compile-time guard: the permission-bypass cap must never come back by
+// accident. The runtime model depends on normal DAC authorizing writes
+// under /var/run/oo; re-adding this cap would silently paper over a
+// regression where the oorunner switch is broken.
+static_assert(
+    [] {
+      for (auto c : CAP_LIST)
+        if (c == CAP_DAC_OVERRIDE) return false;
+      return true;
+    }(),
+    "CAP_DAC_OVERRIDE must NOT appear in CAP_LIST");
 
 fn set_file_capabilities(const char *path) -> error_or<ok>
 {

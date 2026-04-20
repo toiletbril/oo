@@ -59,7 +59,9 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
 
     // SECURITY: Drop all inherited capabilities before exec. uid=0 is
     // sufficient for iptables to open /run/xtables.lock and run its root
-    // check. No caps should propagate into the iptables process.
+    // check; no DAC-override or any other capability is needed in the
+    // child. The parent holds CAP_SETUID which authorizes the setuid(0)
+    // above.
     unused(caps::drop_for_exec());
 
     std::vector<const char *> exec_args;
@@ -102,7 +104,8 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok>
     trace(verbosity::debug, "setuid(0) ok, executing {}", m_backend_path);
 
     // SECURITY: Drop all inherited capabilities before exec. uid=0 is
-    // sufficient for nftables. No caps should propagate into the nft process.
+    // sufficient for nftables; no DAC override or other caps are needed
+    // in the child. The parent's CAP_SETUID authorized the setuid(0).
     unused(caps::drop_for_exec());
 
     std::vector<const char *> exec_args;

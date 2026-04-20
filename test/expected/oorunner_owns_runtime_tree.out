@@ -1,0 +1,4 @@
+oorunner account: present.*ok
+/var/run/oo owner: oorunner.*ok
+namespace dir owner: oorunner.*ok
+pids.ini owner: oorunner.*ok

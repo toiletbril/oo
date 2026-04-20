@@ -1,0 +1,2 @@
+daemon uid matches invoking uid.*ok
+daemon uid is not oorunner.*ok

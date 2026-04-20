@@ -1,6 +1,8 @@
 #!/bin/sh
 # Verify that /var/run/oo is 0755 (not world-writable) and that each
-# namespace directory is created 0700 (owner-only access).
+# namespace directory is created 0755 (owner write, others read-only).
+# The owner is the 'oorunner' system user, so the invoking user can read
+# namespace state but cannot modify it.
 
 NS="dp"
 
@@ -18,8 +20,8 @@ fi
 ../oo up "$NS" -- sleep 30 2>/dev/null
 
 NS_PERMS=$(stat -c '%a' "/var/run/oo/$NS")
-if test "$NS_PERMS" = "700"; then
-  echo "namespace dir perms: 700 (ok)"
+if test "$NS_PERMS" = "755"; then
+  echo "namespace dir perms: 755 (ok)"
 else
   echo "namespace dir perms: $NS_PERMS (FAILED)"
 fi

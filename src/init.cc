@@ -5,6 +5,7 @@
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
+#include "oorunner.hh"
 
 #include <filesystem>
 #include <sys/statvfs.h>
@@ -47,6 +48,9 @@ fn init(cli::cli &&cli) -> error_or<ok>
         "capabilities. Move oo to a non-nosuid filesystem and re-run init.");
   }
 
+  unwrap(oorunner::ensure_exists());
+  let oor = unwrap(oorunner::lookup());
+
   unwrap(caps::set_file_capabilities(exe_path.c_str()));
 
   std::error_code ec;
@@ -54,26 +58,27 @@ fn init(cli::cli &&cli) -> error_or<ok>
     std::filesystem::create_directories(constants::OO_RUN_DIR, ec);
     unwrap(oo_error_code(ec, std::string{"Failed to create "} +
                                  constants::OO_RUN_DIR));
-    trace(verbosity::info, "Created {} with owner-only write permissions",
-          constants::OO_RUN_DIR);
+    trace(verbosity::info, "Created {}", constants::OO_RUN_DIR);
   }
 
-  // SECURITY: 0755 (rwxr-xr-x) prevents unprivileged users from creating or
-  // deleting entries in the parent directory. The binary uses CAP_DAC_OVERRIDE
-  // to create per-user namespace subdirectories despite not owning the dir.
-  // Do not change to 1777 (world-writable); that allows any user to pollute
-  // the global namespace by creating or removing entries here.
+  // SECURITY: /var/run/oo is owned by the dedicated 'oorunner' system user.
+  // The oo binary switches to that user at runtime start, so writes there
+  // go through normal DAC checks. The invoking user retains only r-x on
+  // this tree. Do not widen perms to 1777; that would allow anyone to
+  // replace or remove entries.
+  unwrap(
+      oo_linux_syscall(chown, constants::OO_RUN_DIR.c_str(), oor.uid, oor.gid));
+
+  using perms = std::filesystem::perms;
   std::filesystem::permissions(constants::OO_RUN_DIR,
-                               std::filesystem::perms::owner_all |
-                                   std::filesystem::perms::group_read |
-                                   std::filesystem::perms::group_exec |
-                                   std::filesystem::perms::others_read |
-                                   std::filesystem::perms::others_exec,
+                               perms::owner_all | perms::group_read |
+                                   perms::group_exec | perms::others_read |
+                                   perms::others_exec,
                                ec);
   unwrap(oo_error_code(ec, std::string{"Failed to set permissions on "}.append(
                                constants::OO_RUN_DIR)));
 
-  trace(verbosity::info, "Updated {} permissions to 0755",
+  trace(verbosity::info, "Updated {} to oorunner:oorunner 0755",
         constants::OO_RUN_DIR);
 
   return ok{};
