@@ -1,11 +1,16 @@
 # oo
 
-Run daemons inside isolated Linux network namespaces from the command line.
-Allows, for example, split-tunnel anything for TUN-based VPNs, based on
-namespace they were launched in.
+[![Integration Tests](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml/badge.svg?branch=staging)](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml)
 
-State is kept under `/var/run/oo`. Each namespace gets its own subdirectory
-with daemon logs and persistent state files:
+Run daemons inside isolated Linux network namespaces from the command line via
+a small binary . Useful for split-tunneling TUN-based VPNs, or anything else
+that benefits from a per-namespace routing table.
+
+The software is very early stage--the security model is roughly 'I added as
+many assert as I could and there's probably only 3 users using this software'.
+
+State lives under `/var/run/oo`. Each namespace gets its own subdirectory with
+logs and persistent state files:
 
 ```
 /var/run/oo/
@@ -15,8 +20,16 @@ with daemon logs and persistent state files:
     ├── network.ini      subnet and veth interface names
     ├── resolv.conf      DNS config bind-mounted into the namespace
     ├── nsswitch.conf    nsswitch config bind-mounted into the namespace
-    ├── stdout           daemon stdout (append)
-    └── stderr           daemon stderr (append)
+    ├── stdout           daemon stdout
+    └── stderr           daemon stderr
+```
+
+Building needs `clang` and `make`. There are no library dependencies. At
+runtime, the only requirements are `iptables-legacy` and a recent Linux kernel
+with network namespace support. To install:
+```console
+$ make
+$ sudo make install
 ```
 
 Before the first use, run once as root to set file capabilities on the binary
@@ -25,114 +38,88 @@ and create the runtime directory:
 $ sudo oo init
 ```
 
-To build from source, you need `clang` and `make`. There are no library
-dependencies. At runtime, the only requirement is `iptables-legacy` and a
-recent Linux kernel with network namespace support. Then:
-```console
-$ make
-$ make install
-```
-
-## Usage
-
-Running any subcommand with `--help` prints a more detailed usage:
-```console
-$ oo [subcommand] --help
-```
-
-To start a daemon inside a new namespace:
-```console
-$ oo up vpn -- openvpn /etc/openvpn/client.conf
-oo: Namespace `vpn` is up. Daemon PID: 1234.
-```
-
-This creates a network namespace named `vpn`, sets up a `veth` pair with NAT
-through the host's default interface, and starts the daemon inside it. The
-daemon runs with its own private network stack. Its stdout and stderr are
-written to `/var/run/oo/vpn/stdout` and `/var/run/oo/vpn/stderr`.
-
-To use custom DNS inside the namespace, pass `--dns` or `--dns-file`:
-```console
-$ oo up vpn --dns=1.1.1.1 --dns=8.8.8.8 -- openvpn /etc/openvpn/client.conf
-$ oo up vpn --dns-file=/etc/resolv-vpn.conf -- openvpn /etc/openvpn/client.conf
-```
-
-`--dns` can be specified multiple times. `--dns-file` bind-mounts the given
-file as `/etc/resolv.conf` inside the namespace and overrides `--dns` if both
-are provided.
-
-To run a command inside a running namespace:
-```console
-$ oo exec vpn -- curl https://example.com
-```
-
-The command runs inside the `vpn` namespace, subject to its routing table and
-DNS. It exits with the command's exit code.
-
-To shut the daemon down and tear the namespace down:
-```console
-$ oo down vpn
-```
-
-`oo down` sends `SIGTERM` to the daemon and waits up to ten seconds for a
-graceful exit before falling back to `SIGKILL`. The timeout is configurable
-with `--timeout=<seconds>`.
-
-## Security
-
-This is pre-production software. It has not been audited and is not suitable
-for shared or multi-tenant systems. The security model assumes a small group
-of trusted users on a single machine.
-
-After `oo init`, the binary holds the following Linux file capabilities:
-
-| Capability | Risk | Reason |
-|---|---|---|
-| `CAP_SYS_ADMIN` | Medium | `unshare(CLONE_NEWNET\|CLONE_NEWNS)`, `setns()` |
-| `CAP_NET_ADMIN` | Low | netlink, routing, veth pair creation |
-| `CAP_SYS_PTRACE` | Low | `setns()` into another process's namespace |
-| `CAP_DAC_OVERRIDE` | **High** | **Bypasses all filesystem permission checks**; needed to create dirs in `/var/run/oo` and so iptables children can open `/run/xtables.lock` after `setuid(0)` |
-| `CAP_SETUID` | **High** | **Allows `setuid(0)` in child processes**; needed so iptables/nftables can pass their internal root check |
-| `CAP_SYS_CHROOT` | Medium | `setns(mnt_fd, CLONE_NEWNS)` for mount namespace |
-| `CAP_SETPCAP` | Low | Modify capability bounding set in children |
-
-These capabilities are used only by the `oo` process itself. All exec'd child
-processes (the daemon, `oo exec` targets, and iptables children) have their
-effective and inheritable capability sets dropped before `execvp`.
-
-The runtime directory layout and permissions:
-
-```
-/var/run/oo/          root:root  0755  (only oo can create entries)
-/var/run/oo/<name>/   user:user  0700  (only creator can access)
-```
-
-Any user who can invoke `oo up` can start processes that run with namespace
-isolation. Do not grant access to `oo` on machines with untrusted users.
-
 ## Development
 
-Build and run tests with:
-```console
-$ make
-$ make test
-```
+`make test` runs the integration suite. The `MODE` variable controls the build
+type:
 
-The `MODE` variable controls the build type:
-
-| `MODE=` | Description |
-|---------|-------------|
-| `dbg`   | Debug build, no optimizations (default) |
-| `asan`  | AddressSanitizer enabled |
-| `rel`   | Release build, optimized |
-| `prof`  | Profiling build |
+| `MODE=` | Description                             |
+|---------|-----------------------------------------|
+| `dbg`   | Debug build (default)                   |
+| `asan`  | Debug build with AddressSanitizer       |
+| `rel`   | Release build                           |
+| `prof`  | Release build with debug symbols        |
 
 ```console
 $ make MODE=rel
 $ make MODE=asan test
 ```
 
-Run the formatter before committing:
+Run `make fmt` before committing.
+
+## Usage
+
+Remember that running anything with `--help` prints a more detailed usage:
 ```console
-$ make fmt
+$ oo [subcommand] --help
 ```
+
+To start a daemon inside a fresh namespace:
+```console
+$ oo up vpn -- openvpn /etc/openvpn/client.conf
+oo: Namespace `vpn` is up. Daemon PID: 1234.
+```
+
+This creates a network namespace named `vpn`, sets up a `veth` pair with NAT
+through the host's default interface, and launches the daemon inside it. The
+daemon runs with its own private network stack. Its stdout and stderr are
+written to `/var/run/oo/vpn/stdout` and `/var/run/oo/vpn/stderr`.
+
+To use custom DNS, pass `--dns` (repeatable) or `--dns-file`, which
+bind-mounts the given file as `/etc/resolv.conf` inside the namespace and
+overrides `--dns` if both are given:
+```console
+$ oo up vpn --dns=1.1.1.1 --dns=8.8.8.8 -- openvpn /etc/openvpn/client.conf
+$ oo up vpn --dns-file=/etc/resolv-vpn.conf -- openvpn /etc/openvpn/client.conf
+```
+
+To run a command inside a running namespace, use `exec`. It exits with the
+command's own exit code:
+```console
+$ oo exec vpn -- curl https://example.com
+```
+
+To shut the daemon down and tear the namespace down:
+```console
+$ oo down vpn
+```
+
+`oo down` sends `SIGTERM` and waits up to ten seconds for a graceful exit
+before falling back to `SIGKILL`, configurable with `--timeout=<seconds>`.
+
+## Capabilities
+
+`oo init` sets file capabilities on the binary so unprivileged users can
+invoke namespace operations without `sudo`:
+
+| Capability         | Reason                                               |
+|--------------------|------------------------------------------------------|
+| `CAP_SYS_ADMIN`    | `unshare()`, `setns()`                               |
+| `CAP_NET_ADMIN`    | netlink, routing, veth pair                          |
+| `CAP_SYS_PTRACE`   | `setns()` into another process's namespace           |
+| `CAP_SETUID`       | `setuid(0)` in iptables/nftables children            |
+| `CAP_SYS_CHROOT`   | `setns(mnt_fd, CLONE_NEWNS)` for the mount namespace |
+| `CAP_SETPCAP`      | modify the capability bounding set in children       |
+
+These capabilities are used only by the `oo` process itself. All exec'd
+children (the daemon, `oo exec` targets, iptables children) have their
+effective and inheritable capability sets dropped before `exec`.
+
+Runtime directory layout and permissions:
+
+```
+/var/run/oo/          uurunner:uurunner  0755  (only oo can create entries)
+/var/run/oo/<name>/   uurunner:uurunner  0700  (only creator can access)
+```
+
+Happy tunneling.
