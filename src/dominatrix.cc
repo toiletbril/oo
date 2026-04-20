@@ -5,12 +5,24 @@
 
 #include <arpa/inet.h>
 #include <cassert>
+#include <cerrno>
+#include <fcntl.h>
 #include <fstream>
 #include <regex>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace oo {
 
 dominatrix::dominatrix(linux_namespace &ns) : m_ns(ns) {}
+
+dominatrix::~dominatrix()
+{
+  if (m_dns_fd >= 0) {
+    unused(linux::oo_close(m_dns_fd));
+    m_dns_fd = -1;
+  }
+}
 
 fn dominatrix::is_ip_address(std::string_view s) -> bool
 {
@@ -36,17 +48,41 @@ fn dominatrix::set_dns_servers(const std::vector<std::string> &dns_servers)
 fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok>
 {
   trace_variables(verbosity::all, dns_file_path);
-  // SECURITY: With CAP_DAC_OVERRIDE active, this binary can open any file on
-  // the filesystem regardless of its permissions. The dns_file_path comes from
-  // the --dns-file flag (user-supplied). The trusted-user security model
-  // accepts reading arbitrary files. If that model changes, validate that the
-  // path resolves to an approved directory (e.g. via realpath + prefix check).
-  //
   // Null bytes in a path cause silent truncation in C string APIs; reject them.
-  insist(dns_file_path.find('\0') == std::string_view::npos &&
+  insist(dns_file_path.find('\0') == std::string_view::npos,
          "DNS file path must not contain null bytes");
-  m_dns_file_path = dns_file_path;
-  trace(verbosity::debug, "Set DNS file path: {}", dns_file_path);
+
+  std::string path{dns_file_path};
+
+  // SECURITY: Open with O_NOFOLLOW so a symlinked --dns-file is rejected at
+  // the final path component. This prevents a user from pointing --dns-file
+  // at a symlink to some oorunner-readable file elsewhere and having the
+  // contents bind-mounted into the namespace. Holding the fd also removes
+  // the TOCTOU window between validation and the later read in write_configs.
+  int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) {
+    if (errno == ELOOP) {
+      return make_error("--dns-file must not be a symlink: " + path);
+    }
+    return make_error("Could not open DNS file: " + path + ": " +
+                      linux::get_errno_string());
+  }
+
+  struct stat st{};
+  if (::fstat(fd, &st) != 0) {
+    ::close(fd);
+    return make_error("fstat on --dns-file failed: " + path + ": " +
+                      linux::get_errno_string());
+  }
+  if (!S_ISREG(st.st_mode)) {
+    ::close(fd);
+    return make_error("--dns-file must be a regular file: " + path);
+  }
+
+  if (m_dns_fd >= 0) unused(linux::oo_close(m_dns_fd));
+  m_dns_fd = fd;
+  m_dns_file_path = std::move(path);
+  trace(verbosity::debug, "Opened DNS file: {}", m_dns_file_path);
   return ok{};
 }
 
@@ -67,10 +103,11 @@ fn dominatrix::write_configs() -> error_or<ok>
   let ns_path = unwrap(m_ns.get_path());
   let resolv_path = ns_path / "resolv.conf";
 
-  if (!m_dns_file_path.empty()) {
-    std::ifstream src(m_dns_file_path);
-    if (!src.is_open()) {
-      return make_error("Could not open DNS file: " + m_dns_file_path + ": " +
+  if (m_dns_fd >= 0) {
+    // Rewind the held fd. set_dns_file opened it with O_NOFOLLOW so no
+    // symlink dance is possible between that call and here.
+    if (::lseek(m_dns_fd, 0, SEEK_SET) == (off_t) -1) {
+      return make_error("Could not rewind DNS file: " + m_dns_file_path + ": " +
                         linux::get_errno_string());
     }
 
@@ -81,10 +118,18 @@ fn dominatrix::write_configs() -> error_or<ok>
           linux::get_errno_string());
     }
 
-    dst << src.rdbuf();
-    if (!dst.good()) {
-      return make_error("Error copying DNS file to: " + resolv_path.string() +
-                        ": " + linux::get_errno_string());
+    char buf[4096];
+    ssize_t n;
+    while ((n = ::read(m_dns_fd, buf, sizeof(buf))) > 0) {
+      dst.write(buf, n);
+      if (!dst.good()) {
+        return make_error("Error copying DNS file to: " + resolv_path.string() +
+                          ": " + linux::get_errno_string());
+      }
+    }
+    if (n < 0) {
+      return make_error("Error reading DNS file " + m_dns_file_path + ": " +
+                        linux::get_errno_string());
     }
 
     trace(verbosity::info, "Copied DNS config from {}", m_dns_file_path);

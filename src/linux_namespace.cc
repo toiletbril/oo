@@ -8,6 +8,7 @@
 
 #include <cassert>
 #include <cctype>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace oo {
@@ -76,7 +77,13 @@ fn linux_namespace::create_dir() -> error_or<ok>
   // is kept explicit so the permissions are unambiguous to anyone auditing
   // this code.
   let oor = unwrap(oorunner::lookup());
+  insist(oor.uid > 0 && oor.gid > 0,
+         "oorunner account must not resolve to root");
   unwrap(oo_linux_syscall(chown, path.c_str(), oor.uid, oor.gid));
+  struct stat chown_check{};
+  unwrap(oo_linux_syscall(stat, path.c_str(), &chown_check));
+  insist(chown_check.st_uid == oor.uid && chown_check.st_gid == oor.gid,
+         "chown returned success but ownership did not update");
 
   // SECURITY: 0755 lets the invoking user read their namespace state
   // (pids.ini, stdout, stderr) but not modify it. Only oorunner has write

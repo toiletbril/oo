@@ -31,10 +31,14 @@ public:
   fn get_daemon_pid() const -> pid_t { return m_daemon_pid; }
   fn set_daemon_pid(pid_t pid) -> void { m_daemon_pid = pid; }
 
+  fn get_daemon_starttime() const -> u64 { return m_daemon_starttime; }
+  fn set_daemon_starttime(u64 s) -> void { m_daemon_starttime = s; }
+
 private:
   linux_namespace &m_ns;
   pid_t m_daemon_pid{0};
   pid_t m_child_pid{0};
+  u64 m_daemon_starttime{0};
 
   fn enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>;
 

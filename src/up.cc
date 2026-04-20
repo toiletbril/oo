@@ -58,7 +58,10 @@ fn up(cli::cli &&cli) -> error_or<ok>
 
   satan existing_satan{ns};
   if (!existing_satan.load().is_err()) {
-    if (pid_tracker::is_alive(existing_satan.get_daemon_pid())) {
+    if (pid_tracker::is_alive_with_starttime(
+            existing_satan.get_daemon_pid(),
+            existing_satan.get_daemon_starttime()))
+    {
       return make_error("Namespace '" + ns_name +
                         "' already has a running daemon (PID " +
                         std::to_string(existing_satan.get_daemon_pid()) + ")");

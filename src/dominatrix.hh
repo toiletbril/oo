@@ -15,7 +15,10 @@ class dominatrix
 {
 public:
   dominatrix(linux_namespace &ns);
-  ~dominatrix() = default;
+  ~dominatrix();
+
+  dominatrix(const dominatrix &) = delete;
+  dominatrix &operator=(const dominatrix &) = delete;
 
   // Parse DNS entries (either IPs or file path)
   fn set_dns_servers(const std::vector<std::string> &dns_servers)
@@ -33,6 +36,7 @@ private:
   linux_namespace &m_ns;
   std::vector<std::string> m_dns_servers;
   std::string m_dns_file_path;
+  int m_dns_fd{-1};
 
   fn is_ip_address(std::string_view s) -> bool;
 };

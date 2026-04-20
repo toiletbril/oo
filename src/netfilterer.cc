@@ -55,6 +55,8 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
             su.get_error().get_reason());
       exit(1);
     }
+    insist(::getuid() == 0 && ::geteuid() == 0,
+           "setuid(0) returned success but uid is not root");
     trace(verbosity::debug, "setuid(0) ok, executing {}", m_backend_path);
 
     // SECURITY: Drop all inherited capabilities before exec. uid=0 is
@@ -101,6 +103,8 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok>
             su.get_error().get_reason());
       exit(1);
     }
+    insist(::getuid() == 0 && ::geteuid() == 0,
+           "setuid(0) returned success but uid is not root");
     trace(verbosity::debug, "setuid(0) ok, executing {}", m_backend_path);
 
     // SECURITY: Drop all inherited capabilities before exec. uid=0 is
@@ -236,6 +240,8 @@ fn netfilterer::cleanup() -> error_or<ok>
                 su.get_error().get_reason());
           exit(1);
         }
+        insist(::getuid() == 0 && ::geteuid() == 0,
+               "setuid(0) returned success but uid is not root");
 
         // SECURITY: Drop all inherited capabilities before exec.
         // uid=0 is sufficient for iptables cleanup; no caps needed.

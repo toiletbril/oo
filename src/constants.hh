@@ -40,6 +40,8 @@ inline constexpr std::string_view NFT_CMD = "nft";
 inline constexpr std::string_view ETC_RESOLV_CONF = "/etc/resolv.conf";
 inline constexpr std::string_view ETC_NSSWITCH_CONF = "/etc/nsswitch.conf";
 
+inline constexpr usize INI_MAX_LINE = 65536;
+
 inline constexpr std::string IP_POOL_FILE = "ip-pool.ini";
 inline constexpr std::string RESOLV_CONF_FILE = "resolv.conf";
 inline constexpr std::string NSSWITCH_CONF_FILE = "nsswitch.conf";

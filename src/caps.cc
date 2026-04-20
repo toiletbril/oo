@@ -115,6 +115,22 @@ fn drop_for_exec() -> error_or<ok>
   unwrap(oo_linux_syscall(cap_clear_flag, caps, CAP_INHERITABLE));
   unwrap(oo_linux_syscall(cap_set_proc, caps));
 
+  // SECURITY: last line of defense before execvp. Re-read and assert every
+  // cap we ever hold is now clear in both effective and inheritable sets.
+  cap_t check =
+      unwrap(oo_non_zero(cap_get_proc(), "Failed to re-read dropped caps"));
+  insist(check != nullptr,
+         "cap_get_proc success must yield a non-null capability handle");
+  defer { cap_free(check); };
+  for (auto cap : CAP_LIST) {
+    cap_flag_value_t effective = CAP_SET;
+    cap_flag_value_t inheritable = CAP_SET;
+    cap_get_flag(check, cap, CAP_EFFECTIVE, &effective);
+    cap_get_flag(check, cap, CAP_INHERITABLE, &inheritable);
+    insist(effective == CAP_CLEAR && inheritable == CAP_CLEAR,
+           "drop_for_exec left effective or inheritable caps set");
+  }
+
   trace(verbosity::debug, "Dropped effective and inheritable caps for exec");
   return ok{};
 }

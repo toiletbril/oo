@@ -44,7 +44,13 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
 
     trace(verbosity::debug, "Setting umask and changing directory");
     unwrap(oo_linux_syscall(umask, 0));
-    unwrap(oo_linux_syscall(chdir, unwrap(ns.get_path()).c_str()));
+    let expected_cwd = unwrap(ns.get_path());
+    unwrap(oo_linux_syscall(chdir, expected_cwd.c_str()));
+    char actual_cwd[PATH_MAX];
+    insist(::getcwd(actual_cwd, sizeof(actual_cwd)) != nullptr,
+           "getcwd failed after chdir to namespace directory");
+    insist(expected_cwd.string() == actual_cwd,
+           "chdir returned success but cwd is not the namespace directory");
 
     trace(verbosity::debug, "Forking daemon process");
     let child_pid = unwrap(oo_linux_syscall(fork));
@@ -63,26 +69,28 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
 
       if (!resolv_conf_path.empty()) {
         trace(verbosity::debug, "Bind mounting resolv.conf");
-        unwrap(mnt.bind_mount(resolv_conf_path, "/etc/resolv.conf"));
+        unwrap(mnt.bind_mount(std::string{resolv_conf_path},
+                              std::string{"/etc/resolv.conf"}));
       }
 
       if (!nsswitch_conf_path.empty()) {
         trace(verbosity::debug, "Bind mounting nsswitch.conf");
-        unwrap(mnt.bind_mount(nsswitch_conf_path, "/etc/nsswitch.conf"));
+        unwrap(mnt.bind_mount(std::string{nsswitch_conf_path},
+                              std::string{"/etc/nsswitch.conf"}));
       }
     }
 
     if (let log_dir = ns.get_path(); !log_dir.is_err()) {
       std::string out_path = (log_dir.get_value() / satan::STDOUT_LOG).string();
       std::string err_path = (log_dir.get_value() / satan::STDERR_LOG).string();
-      int out_fd =
-          ::open(out_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+      int out_fd = ::open(out_path.c_str(),
+                          O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
       if (out_fd >= 0) {
         ::dup2(out_fd, STDOUT_FILENO);
         ::close(out_fd);
       }
-      int err_fd =
-          ::open(err_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+      int err_fd = ::open(err_path.c_str(),
+                          O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
       if (err_fd >= 0) {
         ::dup2(err_fd, STDERR_FILENO);
         ::close(err_fd);
@@ -186,6 +194,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   }
 
   insist(msg.starts_with(constants::DAEMON_MSG_OK));
+  insist(msg.size() > constants::DAEMON_MSG_OK.size(),
+         "DAEMON_MSG_OK prefix must be followed by a PID. Fuck you");
   m_child_pid =
       std::stoi(std::string{msg.substr(constants::DAEMON_MSG_OK.size())});
 
@@ -208,9 +218,23 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>
   defer { unused(linux::oo_close(mnt_fd)); };
 
   unwrap(oo_linux_syscall(setns, net_fd, CLONE_NEWNET));
+  {
+    struct stat target{}, self{};
+    unwrap(oo_linux_syscall(fstat, net_fd, &target));
+    unwrap(oo_linux_syscall(stat, "/proc/self/ns/net", &self));
+    insist(target.st_ino == self.st_ino && target.st_dev == self.st_dev,
+           "setns(CLONE_NEWNET) returned success but net ns did not change");
+  }
   trace(verbosity::debug, "Entered network namespace");
 
   unwrap(oo_linux_syscall(setns, mnt_fd, CLONE_NEWNS));
+  {
+    struct stat target{}, self{};
+    unwrap(oo_linux_syscall(fstat, mnt_fd, &target));
+    unwrap(oo_linux_syscall(stat, "/proc/self/ns/mnt", &self));
+    insist(target.st_ino == self.st_ino && target.st_dev == self.st_dev,
+           "setns(CLONE_NEWNS) returned success but mnt ns did not change");
+  }
   trace(verbosity::debug, "Entered mount namespace");
 
   return ok{};
@@ -223,9 +247,12 @@ fn satan::save() const -> error_or<ok>
 
   ini_file file{pid_path};
   unwrap(file.load());
+  insist(m_daemon_pid >= 0 && m_child_pid >= 0,
+         "satan::save must not persist negative PIDs");
   file.set_header("Process state");
   file.set("daemon_pid", std::to_string(m_daemon_pid));
   file.set("child_pid", std::to_string(m_child_pid));
+  file.set("daemon_starttime", std::to_string(m_daemon_starttime));
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
@@ -247,10 +274,16 @@ fn satan::load() -> error_or<ok>
   unwrap(file.load());
 
   if (let v = file.find("daemon_pid")) {
+    insist(!v->empty(), "daemon_pid entry must have a non-empty value");
     m_daemon_pid = std::stoi(*v);
   }
   if (let v = file.find("child_pid")) {
+    insist(!v->empty(), "child_pid entry must have a non-empty value");
     m_child_pid = std::stoi(*v);
+  }
+  if (let v = file.find("daemon_starttime")) {
+    insist(!v->empty(), "daemon_starttime entry must have a non-empty value");
+    m_daemon_starttime = std::stoull(*v);
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
@@ -270,7 +303,7 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
 
-  if (!pid_tracker::is_alive(m_daemon_pid)) {
+  if (!pid_tracker::is_alive_with_starttime(m_daemon_pid, m_daemon_starttime)) {
     trace(verbosity::error, "Daemon has stale PID {}.", m_daemon_pid);
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }

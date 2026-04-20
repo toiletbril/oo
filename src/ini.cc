@@ -1,5 +1,6 @@
 #include "ini.hh"
 
+#include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
 
@@ -60,6 +61,10 @@ fn ini_file::load() -> error_or<ok>
   usize line_no = 0;
   while (std::getline(file, line)) {
     ++line_no;
+    if (line.size() > constants::INI_MAX_LINE) {
+      return make_error("INI line exceeds limit at " + m_path.string() + ":" +
+                        std::to_string(line_no));
+    }
     let trimmed = trim(line);
     if (trimmed.empty() || trimmed.front() == '#' || trimmed.front() == ';') {
       continue;

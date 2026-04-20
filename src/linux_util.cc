@@ -18,6 +18,8 @@ fn get_error_string(int errnum) -> std::string { return std::strerror(errnum); }
 fn raise_capability(int cap) -> error_or<ok>
 {
   trace_variables(verbosity::debug, cap);
+  insist(cap >= 0 && cap <= CAP_LAST_CAP,
+         "capability id must be within kernel range");
   cap_t caps = cap_get_proc();
   if (caps == nullptr) {
     return make_error("Failed to get process capabilities: " +
@@ -54,6 +56,8 @@ fn make_linux_args(const std::vector<std::string> &args)
 
 fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>
 {
+  insist(!args.empty() && !args[0].empty(),
+         "oo_exec requires argv[0] as the program path");
   let os_args = make_linux_args(args);
   let result = oo_linux_syscall(execvp, os_args[0],
                                 const_cast<char *const *>(os_args.data()));
@@ -80,6 +84,7 @@ fn oo_sleep_ms(int milliseconds) -> error_or<ok>
 fn oo_open(const char *path, int flags) -> error_or<fd>
 {
   trace_variables(verbosity::debug, path, flags);
+  insist(path != nullptr, "oo_open requires a non-null path. Fuck you");
   return oo_linux_syscall(open, path, flags);
 }
 

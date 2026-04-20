@@ -188,6 +188,8 @@ fn ensure_exists() -> error_or<ok>
   }
 
   let uid = unwrap(pick_system_uid());
+  insist(uid >= 100 && uid <= 999,
+         "pick_system_uid must return a value in the system uid range");
   let gid = static_cast<gid_t>(uid);
 
   // SECURITY: Serialize account edits against useradd/groupadd/passwd via

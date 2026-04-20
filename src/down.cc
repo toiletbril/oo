@@ -67,6 +67,9 @@ fn down(cli::cli &&cli) -> error_or<ok>
     if (end == timeout_str.c_str() || *end != '\0') {
       return make_error("Invalid --timeout value: " + timeout_str);
     }
+    if (parsed > 3600) {
+      return make_error("--timeout must be <= 3600");
+    }
     timeout_s = static_cast<usize>(parsed);
   }
 

@@ -22,10 +22,15 @@ fn ensure_runtime_dir_exists() -> error_or<ok>
   // SECURITY: Enforce that /var/run/oo is owned by oorunner. A stale
   // root-owned directory from a previous install would silently bypass
   // the oorunner-based permission model; refuse to run until `oo init`
-  // fixes ownership.
+  // fixes ownership. Use lstat so a symlinked OO_RUN_DIR is rejected
+  // instead of silently following the link.
   struct stat st{};
-  unwrap(oo_linux_syscall(stat, constants::OO_RUN_DIR.c_str(), &st));
+  unwrap(oo_linux_syscall(lstat, constants::OO_RUN_DIR.c_str(), &st));
+  insist(S_ISDIR(st.st_mode),
+         "OO_RUN_DIR must be a real directory, not a symlink or other node");
   let oor = unwrap(oorunner::lookup());
+  insist(oor.uid > 0 && oor.gid > 0,
+         "oorunner account must not resolve to root");
   if (st.st_uid != oor.uid) {
     return make_error(
         std::string{constants::OO_RUN_DIR} +

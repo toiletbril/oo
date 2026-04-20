@@ -38,6 +38,8 @@ netlinker::~netlinker() = default;
 fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32>
 {
   trace_variables(verbosity::debug, ifname);
+  insist(!ifname.empty() && ifname.size() < IFNAMSIZ,
+         "interface name must be non-empty and fit in IFNAMSIZ");
   let i =
       unwrap(oo_non_zero(if_nametoindex(ifname.data()),
                          "Interface not found: `" + std::string{ifname} + "`"));
@@ -174,6 +176,8 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 
   trace(verbosity::info, "Adding address {}", std::string{ip});
 
+  insist(!ip.empty() && ip.find('\0') == std::string_view::npos,
+         "IP address must be a non-empty C string. Fuck you");
   struct in_addr addr;
   if (inet_pton(AF_INET, ip.data(), &addr) != 1) {
     return make_error("Invalid IP address: " + std::string{ip});
@@ -239,6 +243,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   if (prefix_len > 0 && !dest_ip.empty() &&
       dest_ip != constants::DEFAULT_GATEWAY_IP)
   {
+    insist(dest_ip.find('\0') == std::string_view::npos,
+           "destination IP must be a non-empty C string");
     struct in_addr dst;
     if (inet_pton(AF_INET, dest_ip.data(), &dst) != 1) {
       return make_error("Invalid destination IP: " + std::string{dest_ip});
@@ -252,6 +258,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
     buf_ptr += rta->rta_len;
   }
 
+  insist(!gateway.empty() && gateway.find('\0') == std::string_view::npos,
+         "gateway IP must be a non-empty C string");
   struct in_addr gw;
   if (inet_pton(AF_INET, gateway.data(), &gw) != 1) {
     return make_error("Invalid gateway IP: " + std::string{gateway});
