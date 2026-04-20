@@ -1,4 +1,5 @@
 #include "caps.hh"
+
 #include "common.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -39,21 +40,20 @@ static constexpr cap_value_t CAP_LIST[] = {
 static_assert(
     [] {
       for (auto c : CAP_LIST)
-        if (c == CAP_DAC_OVERRIDE)
-          return true;
+        if (c == CAP_DAC_OVERRIDE) return true;
       return false;
     }(),
     "CAP_DAC_OVERRIDE must remain in CAP_LIST");
 static_assert(
     [] {
       for (auto c : CAP_LIST)
-        if (c == CAP_SETUID)
-          return true;
+        if (c == CAP_SETUID) return true;
       return false;
     }(),
     "CAP_SETUID must remain in CAP_LIST");
 
-fn set_file_capabilities(const char *path) -> error_or<ok> {
+fn set_file_capabilities(const char *path) -> error_or<ok>
+{
   cap_t caps =
       unwrap(oo_non_zero(cap_init(), "Failed to initialize capability state"));
   defer { cap_free(caps); };
@@ -79,7 +79,8 @@ fn set_file_capabilities(const char *path) -> error_or<ok> {
   return ok{};
 }
 
-fn drop_for_exec() -> error_or<ok> {
+fn drop_for_exec() -> error_or<ok>
+{
   // Clear the ambient set first (does not require any capability).
   if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0) {
     return make_error("Failed to clear ambient capabilities: " +

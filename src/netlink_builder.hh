@@ -10,35 +10,40 @@ namespace oo {
 
 // Helper to get tail of netlink message
 #define NLMSG_TAIL(nmsg)                                                       \
-  ((struct rtattr *)(((char *)(nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
+  ((struct rtattr *) (((char *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
 
-class netlink_builder {
+class netlink_builder
+{
 public:
   netlink_builder(struct nlmsghdr *hdr, usize max_len)
-      : m_hdr(hdr), m_max_len(max_len) {}
+      : m_hdr(hdr), m_max_len(max_len)
+  {}
 
-  fn add_attr(u16 type, const void *data, usize len) -> void {
+  fn add_attr(u16 type, const void *data, usize len) -> void
+  {
     usize rta_len = RTA_LENGTH(len);
     struct rtattr *rta = NLMSG_TAIL(m_hdr);
     rta->rta_type = type;
     rta->rta_len = rta_len;
-    if (len > 0)
-      std::memcpy(RTA_DATA(rta), data, len);
+    if (len > 0) std::memcpy(RTA_DATA(rta), data, len);
     m_hdr->nlmsg_len = NLMSG_ALIGN(m_hdr->nlmsg_len) + RTA_ALIGN(rta_len);
   }
 
-  fn add_attr_str(u16 type, std::string_view str) -> void {
+  fn add_attr_str(u16 type, std::string_view str) -> void
+  {
     add_attr(type, str.data(), str.length() + 1);
   }
 
-  fn begin_nested(u16 type) -> struct rtattr * {
+  fn begin_nested(u16 type) -> struct rtattr *
+  {
     struct rtattr *nest = NLMSG_TAIL(m_hdr);
     add_attr(type, nullptr, 0);
     return nest;
   }
 
-  fn end_nested(struct rtattr *nest) -> void {
-    nest->rta_len = (char *)NLMSG_TAIL(m_hdr) - (char *)nest;
+  fn end_nested(struct rtattr *nest) -> void
+  {
+    nest->rta_len = (char *) NLMSG_TAIL(m_hdr) - (char *) nest;
   }
 
   fn add_raw_to_len(usize len) -> void { m_hdr->nlmsg_len += len; }

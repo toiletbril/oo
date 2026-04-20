@@ -9,7 +9,8 @@
 
 namespace oo {
 
-class cleanup_guard {
+class cleanup_guard
+{
 public:
   cleanup_guard();
   ~cleanup_guard();

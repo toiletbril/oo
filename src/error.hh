@@ -7,8 +7,10 @@
 
 namespace oo {
 
-struct error {
-  enum code : i8 {
+struct error
+{
+  enum code : i8
+  {
     unknown = -1,
   };
 
@@ -25,9 +27,11 @@ private:
   std::string m_reason;
 };
 
-struct ok {};
+struct ok
+{};
 
-constexpr auto strip_path_prefix(const char *path) -> const char * {
+constexpr auto strip_path_prefix(const char *path) -> const char *
+{
   if (path[0] == '.' && path[1] == '/') {
     return path + 2;
   }
@@ -35,12 +39,15 @@ constexpr auto strip_path_prefix(const char *path) -> const char * {
 }
 
 #define make_error(msg)                                                        \
-  oo::error {                                                                  \
+  oo::error                                                                    \
+  {                                                                            \
     ::std::format("{} ({}:{})", msg, oo::strip_path_prefix(__FILE__),          \
                   __LINE__)                                                    \
   }
 
-template <typename V> struct error_or {
+template <typename V>
+struct error_or
+{
   error_or() : m_data() {}
 
   error_or(V v) : m_data(std::move(v)) {}
@@ -49,14 +56,16 @@ template <typename V> struct error_or {
   error_or(const error_or &other) : m_data(other.m_data) {}
   error_or(error_or &&other) noexcept : m_data(std::move(other.m_data)) {}
 
-  error_or &operator=(const error_or &other) {
+  error_or &operator=(const error_or &other)
+  {
     if (this != &other) {
       m_data = other.m_data;
     }
     return *this;
   }
 
-  error_or &operator=(error_or &&other) noexcept {
+  error_or &operator=(error_or &&other) noexcept
+  {
     if (this != &other) {
       m_data = std::move(other.m_data);
     }
@@ -69,21 +78,21 @@ template <typename V> struct error_or {
   bool is_err() const { return std::holds_alternative<error>(m_data); }
   explicit operator bool() const { return !is_err(); }
 
-  V &get_value() {
-    if (is_err())
-      debugtrap(".get_value() called on an error");
+  V &get_value()
+  {
+    if (is_err()) debugtrap(".get_value() called on an error");
     return std::get<V>(m_data);
   }
   V &operator*() { return get_value(); }
 
-  V take() {
-    if (is_err())
-      debugtrap(".take() called on an error");
+  V take()
+  {
+    if (is_err()) debugtrap(".take() called on an error");
     return std::move(std::get<V>(m_data));
   }
-  error get_error() const {
-    if (!is_err())
-      debugtrap(".get_error() called on a value");
+  error get_error() const
+  {
+    if (!is_err()) debugtrap(".get_error() called on a value");
     return std::get<error>(m_data);
   }
 
@@ -94,8 +103,7 @@ private:
 #define unwrap(error_or_value)                                                 \
   ({                                                                           \
     auto _r = (error_or_value);                                                \
-    if (!_r)                                                                   \
-      return _r.get_error();                                                   \
+    if (!_r) return _r.get_error();                                            \
     _r.take();                                                                 \
   })
 

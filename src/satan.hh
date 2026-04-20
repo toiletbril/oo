@@ -12,7 +12,8 @@
 
 namespace oo {
 
-class satan {
+class satan
+{
 public:
   satan(linux_namespace &ns) : m_ns(ns) {}
 

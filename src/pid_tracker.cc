@@ -1,4 +1,5 @@
 #include "pid_tracker.hh"
+
 #include "debug.hh"
 
 #include <filesystem>
@@ -9,7 +10,8 @@
 
 namespace oo {
 
-fn pid_tracker::is_alive(pid_t pid) -> bool {
+fn pid_tracker::is_alive(pid_t pid) -> bool
+{
   trace_variables(verbosity::all, pid);
   if (pid <= 0) {
     return false;
@@ -20,8 +22,8 @@ fn pid_tracker::is_alive(pid_t pid) -> bool {
 }
 
 fn pid_tracker::is_alive_and_matches(pid_t pid,
-                                     std::string_view expected_cmdline)
-    -> bool {
+                                     std::string_view expected_cmdline) -> bool
+{
   trace_variables(verbosity::all, pid, expected_cmdline);
   if (!is_alive(pid)) {
     return false;
@@ -40,7 +42,8 @@ fn pid_tracker::is_alive_and_matches(pid_t pid,
   return cmdline.find(expected_cmdline) != std::string::npos;
 }
 
-fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t> {
+fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t>
+{
   trace_variables(verbosity::all, path);
   std::ifstream file(path.data());
   if (!file.is_open()) {
@@ -57,8 +60,8 @@ fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t> {
   return pid;
 }
 
-fn pid_tracker::write_pid_file(std::string_view path, pid_t pid)
-    -> error_or<ok> {
+fn pid_tracker::write_pid_file(std::string_view path, pid_t pid) -> error_or<ok>
+{
   trace_variables(verbosity::all, path, pid);
   std::filesystem::path file_path(path);
   std::filesystem::path parent = file_path.parent_path();
@@ -88,7 +91,8 @@ fn pid_tracker::write_pid_file(std::string_view path, pid_t pid)
   return ok{};
 }
 
-fn pid_tracker::remove_pid_file(std::string_view path) -> error_or<ok> {
+fn pid_tracker::remove_pid_file(std::string_view path) -> error_or<ok>
+{
   trace_variables(verbosity::all, path);
   std::error_code ec;
   std::filesystem::remove(path.data(), ec);

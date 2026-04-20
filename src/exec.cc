@@ -1,4 +1,5 @@
 #include "exec.hh"
+
 #include "cli.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -9,7 +10,8 @@
 
 namespace oo {
 
-fn exec(cli::cli &&cli) -> error_or<ok> {
+fn exec(cli::cli &&cli) -> error_or<ok>
+{
   cli.add_use_case("oo exec [-options] <namespace> [--] <command> [args...]",
                    "Run a command inside a running namespace.");
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Verify that two concurrent oo up invocations allocate distinct subnets.
 # This exercises the fcntl file lock on ip-pool.ini.
 
@@ -6,8 +6,8 @@ NS1="sr1"
 NS2="sr2"
 
 cleanup() {
-    ../oo down "$NS1" 2>/dev/null || true
-    ../oo down "$NS2" 2>/dev/null || true
+  ../oo down "$NS1" 2>/dev/null || true
+  ../oo down "$NS2" 2>/dev/null || true
 }
 ../oo down "$NS1" 2>/dev/null || true
 ../oo down "$NS2" 2>/dev/null || true
@@ -20,8 +20,8 @@ wait
 SUB1=$(grep '^subnet_octet=' "/var/run/oo/$NS1/network.ini" 2>/dev/null | cut -d= -f2)
 SUB2=$(grep '^subnet_octet=' "/var/run/oo/$NS2/network.ini" 2>/dev/null | cut -d= -f2)
 
-if [ -n "$SUB1" ] && [ -n "$SUB2" ] && [ "$SUB1" != "$SUB2" ]; then
-    echo "ns1 and ns2 have distinct subnets: ok"
+if test -n "$SUB1" && test -n "$SUB2" && test "$SUB1" != "$SUB2"; then
+  echo "ns1 and ns2 have distinct subnets: ok"
 else
-    echo "ns1 subnet=$SUB1 ns2 subnet=$SUB2 (FAILED)"
+  echo "ns1 subnet=$SUB1 ns2 subnet=$SUB2 (FAILED)"
 fi

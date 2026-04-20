@@ -2,55 +2,54 @@
 
 #include "common.hh"
 #include "error.hh"
+#include "ini.hh"
+#include "lock.hh"
 
-#include <array>
-#include <filesystem>
-#include <optional>
+#include <string>
 
 namespace oo {
 
-// Manages allocation of 10.oo.X.0/30 subnets where X = 0-255
-// Persists state to /var/run/oo/ip-pool.ini as ini file
-struct subnet {
-  u8 third_octet; // X in 10.oo.X.0/30
+class linux_namespace;
+
+// A /30 subnet within 10.0.X.0/30 where X is the third_octet.
+struct subnet
+{
+  u8 third_octet;
 
   fn host_ip() const -> std::string;
   fn ns_ip() const -> std::string;
   fn to_string() const -> std::string;
 };
 
-class ip_pool {
+// Namespace-scoped handle over the shared IP pool file at
+// /var/run/oo/ip-pool.ini. The lock is acquired on construction and held
+// for the lifetime of the object; entries live in an ini_file member and
+// are flushed on destruction.
+class ip_pool
+{
 public:
-  ip_pool();
-  ~ip_pool();
+  explicit ip_pool(linux_namespace &ns);
+  ~ip_pool() = default;
 
-  // Allocate next available subnet
+  ip_pool(ip_pool &&other) noexcept = default;
+  ip_pool(const ip_pool &) = delete;
+  ip_pool &operator=(const ip_pool &) = delete;
+  ip_pool &operator=(ip_pool &&) = delete;
+
   fn allocate() -> error_or<subnet>;
-
-  // Free a specific subnet
   fn free(subnet s) -> error_or<ok>;
-
-  // Check if subnet is allocated
-  fn is_allocated(subnet s) const -> bool;
 
 private:
   static constexpr const char *POOL_FILE = "/var/run/oo/ip-pool.ini";
   // SECURITY: Lock file serializes concurrent oo processes that would
   // otherwise race on ip-pool.ini reads and writes, potentially allocating
-  // the same subnet twice. The fd is held open for the ip_pool lifetime
-  // (constructor to destructor) and released on close(), which releases
-  // all fcntl locks held by this process on the file.
+  // the same subnet twice.
   static constexpr const char *LOCK_FILE = "/var/run/oo/ip-pool.lock";
   static constexpr usize POOL_SIZE = 256;
 
-  std::array<bool, POOL_SIZE> m_allocated{};
-  bool m_loaded{false};
-  int m_lock_fd{-1};
-
-  fn acquire_lock() -> error_or<ok>;
-  fn release_lock() -> void;
-  fn load() -> error_or<ok>;
-  fn save() -> error_or<ok>;
+  linux_namespace &m_ns;
+  file_lock m_lock;
+  ini_file m_file;
 };
 
 } // namespace oo

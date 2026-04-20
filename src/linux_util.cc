@@ -15,7 +15,8 @@ fn get_errno_string() -> std::string { return std::strerror(errno); }
 
 fn get_error_string(int errnum) -> std::string { return std::strerror(errnum); }
 
-fn raise_capability(int cap) -> error_or<ok> {
+fn raise_capability(int cap) -> error_or<ok>
+{
   trace_variables(verbosity::debug, cap);
   cap_t caps = cap_get_proc();
   if (caps == nullptr) {
@@ -39,7 +40,8 @@ fn raise_capability(int cap) -> error_or<ok> {
 }
 
 fn make_linux_args(const std::vector<std::string> &args)
-    -> std::vector<const char *> {
+    -> std::vector<const char *>
+{
   std::vector<const char *> os_args;
   os_args.reserve(args.size() + 1);
 
@@ -50,7 +52,8 @@ fn make_linux_args(const std::vector<std::string> &args)
   return os_args;
 }
 
-fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
+fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>
+{
   let os_args = make_linux_args(args);
   let result = oo_linux_syscall(execvp, os_args[0],
                                 const_cast<char *const *>(os_args.data()));
@@ -60,31 +63,36 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
   unreachable();
 }
 
-fn oo_kill(pid_t pid, int signal) -> error_or<ok> {
+fn oo_kill(pid_t pid, int signal) -> error_or<ok>
+{
   trace_variables(verbosity::debug, pid, signal);
   unwrap(oo_linux_syscall(kill, pid, signal));
   return ok{};
 }
 
-fn oo_sleep_ms(int milliseconds) -> error_or<ok> {
+fn oo_sleep_ms(int milliseconds) -> error_or<ok>
+{
   trace_variables(verbosity::debug, milliseconds);
   std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
   return ok{};
 }
 
-fn oo_open(const char *path, int flags) -> error_or<fd> {
+fn oo_open(const char *path, int flags) -> error_or<fd>
+{
   trace_variables(verbosity::debug, path, flags);
   return oo_linux_syscall(open, path, flags);
 }
 
-fn oo_close(fd fd) -> error_or<ok> {
+fn oo_close(fd fd) -> error_or<ok>
+{
   trace_variables(verbosity::debug, fd);
   unwrap(oo_linux_syscall(close, fd));
   return ok{};
 }
 
 fn check_error_code(std::error_code ec, std::string_view context)
-    -> error_or<ok> {
+    -> error_or<ok>
+{
   if (ec) {
     return make_error(std::string{context} + ": " + ec.message());
   }

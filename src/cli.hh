@@ -12,8 +12,10 @@
 
 namespace oo::cli {
 
-struct flag {
-  enum class kind : u8 {
+struct flag
+{
+  enum class kind : u8
+  {
     boolean,
     repeated_boolean,
     string,
@@ -39,7 +41,8 @@ protected:
   std::string m_description;
 };
 
-struct flag_boolean : flag {
+struct flag_boolean : flag
+{
   flag_boolean(char short_name, std::string_view long_name,
                std::string_view description);
 
@@ -50,7 +53,8 @@ private:
   bool m_value{false};
 };
 
-struct flag_repeated_boolean : flag {
+struct flag_repeated_boolean : flag
+{
   flag_repeated_boolean(char short_name, std::string_view long_name,
                         std::string_view description);
 
@@ -61,7 +65,8 @@ private:
   usize m_count{0};
 };
 
-struct flag_string : flag {
+struct flag_string : flag
+{
   flag_string(char short_name, std::string_view long_name,
               std::string_view description);
 
@@ -74,7 +79,8 @@ private:
   std::string m_value;
 };
 
-struct flag_many_strings : flag {
+struct flag_many_strings : flag
+{
   flag_many_strings(char short_name, std::string_view long_name,
                     std::string_view description);
 
@@ -87,15 +93,19 @@ private:
   std::vector<std::string> m_values;
 };
 
-struct use_case {
+struct use_case
+{
   std::string pattern;
   std::string description;
 };
 
-struct cli {
+struct cli
+{
   cli(int argc, char **argv) : m_argc(argc), m_argv(argv) {}
 
-  template <typename T, typename... Args> fn add_flag(Args &&...args) -> T & {
+  template <typename T, typename... Args>
+  fn add_flag(Args &&...args) -> T &
+  {
     auto p = std::make_unique<T>(std::forward<Args>(args)...);
     T &ref = *p;
     m_flags.push_back(std::move(p));

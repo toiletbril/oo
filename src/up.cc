@@ -1,4 +1,5 @@
 #include "up.hh"
+
 #include "cli.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -14,7 +15,8 @@
 
 namespace oo {
 
-fn up(cli::cli &&cli) -> error_or<ok> {
+fn up(cli::cli &&cli) -> error_or<ok>
+{
   cli.add_use_case(
       "oo up [-options] <namespace> [--] <daemon> [daemon-args...]",
       "Start a daemon in a new network namespace.");
@@ -52,6 +54,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   // Validate name before allocating any resources so the error is immediate.
   unwrap(ns.validate_name());
 
+  ip_pool pool{ns};
+
   satan existing_satan{ns};
   if (!existing_satan.load().is_err()) {
     if (pid_tracker::is_alive(existing_satan.get_daemon_pid())) {
@@ -67,11 +71,9 @@ fn up(cli::cli &&cli) -> error_or<ok> {
     unwrap(existing_netconf.load());
     const subnet stale_subnet{existing_netconf.get_subnet_octet()};
     ns.reset(existing_netconf);
-    ip_pool stale_pool;
-    unused(stale_pool.free(stale_subnet));
+    unused(pool.free(stale_subnet));
   }
 
-  let pool = ip_pool{};
   let subnet = unwrap(pool.allocate());
   trace(verbosity::info, "Allocated subnet: `{}`", subnet.to_string());
 
@@ -92,7 +94,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   if (flag_resolv_conf_path.is_set() || !flag_dns.is_empty()) {
     if (std::filesystem::exists("/var/run/nscd/socket") ||
-        std::filesystem::exists("/run/nscd/socket")) {
+        std::filesystem::exists("/run/nscd/socket"))
+    {
       cli::show_message(
           "warning: nscd is running; custom DNS may be ignored by the daemon");
     }

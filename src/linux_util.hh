@@ -22,7 +22,8 @@ fn raise_capability(int cap) -> error_or<ok>;
 
 template <typename F, typename... Args>
 fn oo_linux_syscall_impl(const char *text, F syscall_fn, Args... args)
-    -> error_or<int> {
+    -> error_or<int>
+{
   int ret = syscall_fn(args...);
   if (ret < 0) {
     return make_error("`" + std::string{text} +
@@ -52,7 +53,8 @@ fn check_error_code(std::error_code ec, std::string_view context)
 
 // Helper for checking non-zero/non-nullptr returns
 template <typename T>
-fn check_non_zero(T value, std::string_view context) -> error_or<T> {
+fn check_non_zero(T value, std::string_view context) -> error_or<T>
+{
   if (value == T{}) {
     return make_error(std::string{context} + ": " + get_errno_string());
   }
@@ -60,7 +62,7 @@ fn check_non_zero(T value, std::string_view context) -> error_or<T> {
 }
 
 #define oo_error_code(ec, msg) (oo::linux::check_error_code(ec, msg))
-#define oo_non_zero(val, msg) (oo::linux::check_non_zero(val, msg))
+#define oo_non_zero(val, msg)  (oo::linux::check_non_zero(val, msg))
 
 } // namespace linux
 

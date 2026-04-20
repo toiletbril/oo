@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Verify that oo up creates a veth pair: one end on the host,
 # one end inside the namespace.
 
@@ -11,13 +11,13 @@ trap cleanup EXIT
 ../oo up "$NS" -- sleep 30 2>/dev/null
 
 if ip link show "veth-${NS}-host" >/dev/null 2>&1; then
-    echo "host veth veth-${NS}-host: ok"
+  echo "host veth veth-${NS}-host: ok"
 else
-    echo "host veth veth-${NS}-host: FAILED"
+  echo "host veth veth-${NS}-host: FAILED"
 fi
 
 if ../oo exec "$NS" -- ip link show "veth-${NS}-ns" >/dev/null 2>&1; then
-    echo "ns veth veth-${NS}-ns: ok"
+  echo "ns veth veth-${NS}-ns: ok"
 else
-    echo "ns veth veth-${NS}-ns: FAILED"
+  echo "ns veth veth-${NS}-ns: FAILED"
 fi

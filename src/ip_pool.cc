@@ -1,176 +1,123 @@
 #include "ip_pool.hh"
-#include "debug.hh"
-#include "linux_util.hh"
 
-#include <cassert>
-#include <fcntl.h>
-#include <fstream>
-#include <sstream>
-#include <unistd.h>
+#include "debug.hh"
+#include "linux_namespace.hh"
+
+#include <array>
+#include <cstdlib>
+#include <filesystem>
 
 namespace oo {
 
-fn subnet::host_ip() const -> std::string {
+fn subnet::host_ip() const -> std::string
+{
   return "10.0." + std::to_string(third_octet) + ".1";
 }
 
-fn subnet::ns_ip() const -> std::string {
+fn subnet::ns_ip() const -> std::string
+{
   return "10.0." + std::to_string(third_octet) + ".2";
 }
 
-fn subnet::to_string() const -> std::string {
+fn subnet::to_string() const -> std::string
+{
   return "10.0." + std::to_string(third_octet) + ".0/30";
 }
 
-fn ip_pool::acquire_lock() -> error_or<ok> {
-  m_lock_fd = ::open(LOCK_FILE, O_CREAT | O_RDWR, 0600);
-  if (m_lock_fd < 0) {
-    return make_error("Could not open lock file: " + std::string{LOCK_FILE} +
-                      ": " + linux::get_errno_string());
+ip_pool::ip_pool(linux_namespace &ns)
+    : m_ns(ns), m_lock(LOCK_FILE), m_file(POOL_FILE)
+{
+  std::error_code ec;
+  let pool_dir = std::filesystem::path{POOL_FILE}.parent_path();
+  if (!pool_dir.empty() && !std::filesystem::exists(pool_dir, ec)) {
+    std::filesystem::create_directories(pool_dir, ec);
+    if (ec) {
+      trace(verbosity::error, "Failed to create pool directory {}: {}",
+            pool_dir.string(), ec.message());
+    }
   }
-  struct flock fl{};
-  fl.l_type = F_WRLCK;
-  fl.l_whence = SEEK_SET;
-  fl.l_start = 0;
-  fl.l_len = 0;
-  if (::fcntl(m_lock_fd, F_SETLKW, &fl) != 0) {
-    ::close(m_lock_fd);
-    m_lock_fd = -1;
-    return make_error("Could not acquire lock on: " + std::string{LOCK_FILE} +
-                      ": " + linux::get_errno_string());
-  }
-  trace(verbosity::debug, "Acquired IP pool lock");
-  return ok{};
-}
 
-fn ip_pool::release_lock() -> void {
-  if (m_lock_fd >= 0) {
-    ::close(m_lock_fd);
-    m_lock_fd = -1;
-    trace(verbosity::debug, "Released IP pool lock");
-  }
-}
-
-ip_pool::ip_pool() {
-  let lock_result = acquire_lock();
-  if (lock_result.is_err()) {
-    // SECURITY: If locking fails (e.g. /var/run/oo not yet created),
-    // concurrent processes may race on ip-pool.ini. Log the failure.
+  if (let r = m_lock.acquire(); r.is_err()) {
     trace(verbosity::error, "Failed to acquire IP pool lock: {}",
-          lock_result.get_error().get_reason());
+          r.get_error().get_reason());
   }
-  let result = load();
-  if (result.is_err()) {
-    trace(verbosity::debug, "No existing pool file, starting fresh");
+
+  if (let r = m_file.load(); r.is_err()) {
+    trace(verbosity::error, "Failed to load IP pool file: {}",
+          r.get_error().get_reason());
   }
+
+  m_file.set_header(
+      "IP Pool allocation state\nFormat: <subnet>=<namespace_name>");
 }
 
-ip_pool::~ip_pool() {
-  let result = save();
-  if (result.is_err()) {
-    trace(verbosity::error, "Failed to save IP pool: {}",
-          result.get_error().get_reason());
+static fn parse_octet_from_key(const std::string &key) -> error_or<u8>
+{
+  let first_dot = key.find('.');
+  if (first_dot == std::string::npos) {
+    return make_error("Invalid pool key: " + key);
   }
-  release_lock();
+  let second_dot = key.find('.', first_dot + 1);
+  if (second_dot == std::string::npos) {
+    return make_error("Invalid pool key: " + key);
+  }
+  let third_dot = key.find('.', second_dot + 1);
+  if (third_dot == std::string::npos) {
+    return make_error("Invalid pool key: " + key);
+  }
+
+  let octet_str = key.substr(second_dot + 1, third_dot - second_dot - 1);
+  char *end = nullptr;
+  unsigned long v = strtoul(octet_str.c_str(), &end, 10);
+  if (end == octet_str.c_str() || *end != '\0' || v >= 256) {
+    return make_error("Invalid pool key: " + key);
+  }
+  return static_cast<u8>(v);
 }
 
-fn ip_pool::allocate() -> error_or<subnet> {
+fn ip_pool::allocate() -> error_or<subnet>
+{
+  if (!m_lock.is_held()) {
+    return make_error("Cannot allocate: IP pool lock not held");
+  }
+
+  std::array<bool, POOL_SIZE> taken{};
+  for (const let &e : m_file.entries()) {
+    let octet = unwrap(parse_octet_from_key(e.key));
+    taken[octet] = true;
+  }
+
   for (usize i = 0; i < POOL_SIZE; ++i) {
-    if (!m_allocated[i]) {
-      m_allocated[i] = true;
-      // SECURITY: i is bounded by the loop condition; assert guards against
-      // future refactors that could pass an out-of-range index to subnet{}.
-      assert(i < POOL_SIZE);
+    if (!taken[i]) {
       subnet s{static_cast<u8>(i)};
-      trace(verbosity::info, "Allocated subnet: {}", s.to_string());
+      m_file.append(s.to_string(), m_ns.get_name());
+      trace(verbosity::info, "Allocated subnet: {} -> {}", s.to_string(),
+            m_ns.get_name());
       return s;
     }
   }
+
   return make_error("No available subnets in pool");
 }
 
-fn ip_pool::free(subnet s) -> error_or<ok> {
-  trace_variables(verbosity::all, s.third_octet);
-  if (!m_allocated[s.third_octet]) {
-    return make_error("Subnet " + s.to_string() + " was not allocated");
-  }
-  m_allocated[s.third_octet] = false;
-  trace(verbosity::info, "Freed subnet: {}", s.to_string());
-  return ok{};
-}
-
-fn ip_pool::is_allocated(subnet s) const -> bool {
-  trace_variables(verbosity::all, s.third_octet);
-  return m_allocated[s.third_octet];
-}
-
-fn ip_pool::load() -> error_or<ok> {
-  std::ifstream file(POOL_FILE);
-  if (!file.is_open()) {
-    return make_error("Could not open pool file: " + std::string{POOL_FILE} +
-                      ": " + linux::get_errno_string());
+fn ip_pool::free(subnet s) -> error_or<ok>
+{
+  if (!m_lock.is_held()) {
+    return make_error("Cannot free: IP pool lock not held");
   }
 
-  m_allocated.fill(false);
-  std::string line;
-  while (std::getline(file, line)) {
-    if (line.empty() || line[0] == '#' || line[0] == ';') {
-      continue;
-    }
-
-    std::istringstream iss(line);
-    std::string key;
-    char eq;
-    int value;
-
-    if (iss >> key >> eq >> value && eq == '=' && value == 1) {
-      char *endptr = nullptr;
-      unsigned long octet = strtoul(key.c_str(), &endptr, 10);
-      if (endptr != key.c_str() && *endptr == '\0' && octet < POOL_SIZE) {
-        m_allocated[octet] = true;
-      } else {
-        trace(verbosity::error, "Invalid pool entry: {}", line);
-      }
-    }
+  let key = s.to_string();
+  let owner = m_file.find(key);
+  if (!owner.has_value()) {
+    return make_error("Subnet " + key + " was not allocated");
+  }
+  if (*owner != m_ns.get_name()) {
+    return make_error("Subnet " + key + " is owned by '" + *owner + "', not '" +
+                      m_ns.get_name() + "'");
   }
 
-  m_loaded = true;
-  trace(verbosity::debug, "Loaded IP pool from {}", POOL_FILE);
-  return ok{};
-}
-
-fn ip_pool::save() -> error_or<ok> {
-  std::filesystem::path pool_path(POOL_FILE);
-  std::filesystem::path pool_dir = pool_path.parent_path();
-
-  std::error_code ec;
-  std::filesystem::create_directories(pool_dir, ec);
-  if (ec) {
-    return make_error("Could not create pool directory: " + ec.message());
-  }
-
-  std::ofstream file(POOL_FILE);
-  if (!file.is_open()) {
-    return make_error(
-        "Could not open pool file for writing: " + std::string{POOL_FILE} +
-        ": " + linux::get_errno_string());
-  }
-
-  file << "# IP Pool allocation state\n";
-  file << "# Format: <third_octet>=<1=allocated,0=free>\n";
-
-  for (usize i = 0; i < POOL_SIZE; ++i) {
-    if (m_allocated[i]) {
-      file << i << "=1\n";
-    }
-  }
-
-  if (!file.good()) {
-    return make_error("Error writing to pool file: " + std::string{POOL_FILE} +
-                      ": " + linux::get_errno_string());
-  }
-
-  trace(verbosity::debug, "Saved IP pool to {}", POOL_FILE);
+  m_file.remove(key);
+  trace(verbosity::info, "Freed subnet: {}", key);
   return ok{};
 }
 

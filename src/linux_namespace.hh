@@ -13,7 +13,8 @@ namespace oo {
 
 class network_configurator;
 
-class linux_namespace {
+class linux_namespace
+{
 public:
   linux_namespace(std::string_view name) : m_name(name) {};
   ~linux_namespace();

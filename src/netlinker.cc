@@ -1,4 +1,5 @@
 #include "netlinker.hh"
+
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -17,11 +18,13 @@
 namespace oo {
 
 netlinker::netlinker(linux_namespace &ns)
-    : m_ns(ns), m_sock(), m_cleaned_up(false) {
+    : m_ns(ns), m_sock(), m_cleaned_up(false)
+{
   generate_veth_names();
 }
 
-fn netlinker::generate_veth_names() -> void {
+fn netlinker::generate_veth_names() -> void
+{
   m_veth_host = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
                 std::string{constants::VETH_HOST_SUFFIX};
   m_veth_ns = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
@@ -30,7 +33,8 @@ fn netlinker::generate_veth_names() -> void {
 
 netlinker::~netlinker() = default;
 
-fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
+fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32>
+{
   trace_variables(verbosity::debug, ifname);
   let i =
       unwrap(oo_non_zero(if_nametoindex(ifname.data()),
@@ -40,8 +44,10 @@ fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
 }
 
 fn netlinker::create_veth_pair(std::string_view host_name,
-                               std::string_view ns_name) -> error_or<ok> {
-  struct {
+                               std::string_view ns_name) -> error_or<ok>
+{
+  struct
+  {
     struct nlmsghdr n;
     struct ifinfomsg i;
     char buf[1024];
@@ -100,10 +106,12 @@ fn netlinker::create_veth_pair(std::string_view host_name,
 }
 
 fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
-    -> error_or<ok> {
+    -> error_or<ok>
+{
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct ifinfomsg i;
     char buf[256];
@@ -142,12 +150,14 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
 }
 
 fn netlinker::add_address(std::string_view ifname, std::string_view ip,
-                          u8 prefix_len) -> error_or<ok> {
+                          u8 prefix_len) -> error_or<ok>
+{
   trace_variables(verbosity::debug, ifname, ip, prefix_len);
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct ifaddrmsg a;
     char buf[256];
@@ -201,10 +211,12 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 }
 
 fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
-                        std::string_view gateway) -> error_or<ok> {
+                        std::string_view gateway) -> error_or<ok>
+{
   trace_variables(verbosity::debug, dest_ip, prefix_len, gateway);
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct rtmsg r;
     char buf[256];
@@ -223,7 +235,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   char *buf_ptr = req.buf;
 
   if (prefix_len > 0 && !dest_ip.empty() &&
-      dest_ip != constants::DEFAULT_GATEWAY_IP) {
+      dest_ip != constants::DEFAULT_GATEWAY_IP)
+  {
     struct in_addr dst;
     if (inet_pton(AF_INET, dest_ip.data(), &dst) != 1) {
       return make_error("Invalid destination IP: " + std::string{dest_ip});
@@ -268,12 +281,14 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   return ok{};
 }
 
-fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok> {
+fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
+{
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct ifinfomsg i;
   } req{};
@@ -306,12 +321,14 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok> {
   return ok{};
 }
 
-fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok> {
+fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
+{
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct ifinfomsg i;
   } req{};
@@ -343,12 +360,14 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok> {
   return ok{};
 }
 
-fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
+fn netlinker::delete_link(std::string_view ifname) -> error_or<ok>
+{
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct {
+  struct
+  {
     struct nlmsghdr n;
     struct ifinfomsg i;
   } req{};
@@ -379,7 +398,8 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
   return ok{};
 }
 
-fn netlinker::cleanup() -> error_or<ok> {
+fn netlinker::cleanup() -> error_or<ok>
+{
   if (m_cleaned_up) {
     return ok{};
   }

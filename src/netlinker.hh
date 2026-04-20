@@ -12,7 +12,8 @@ namespace oo {
 
 // Raw netlink socket wrapper for network operations
 // Uses rtnetlink protocol for link/addr/route manipulation
-class netlinker {
+class netlinker
+{
 public:
   netlinker(linux_namespace &ns);
   ~netlinker();

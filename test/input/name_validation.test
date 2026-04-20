@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Verify that invalid namespace names are rejected with the correct errors.
 # Each call is expected to fail; errors go to stderr and are captured via 2>&1.
 

@@ -12,7 +12,8 @@ namespace oo {
 
 verbosity LOGGER_VERBOSITY = verbosity::nothing;
 
-static fn entry(cli::cli &&cli) -> error_or<ok> {
+static fn entry(cli::cli &&cli) -> error_or<ok>
+{
   cli.add_use_case(
       "oo [-options] up [-options] <namespace> [--] <daemon command>",
       "Create namespace and start a daemon.");

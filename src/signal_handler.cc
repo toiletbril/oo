@@ -1,4 +1,5 @@
 #include "signal_handler.hh"
+
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -8,7 +9,8 @@
 
 namespace oo {
 
-cleanup_guard::cleanup_guard() {
+cleanup_guard::cleanup_guard()
+{
   struct sigaction sa{};
   sa.sa_handler = handle_signal;
   sigemptyset(&sa.sa_mask);
@@ -23,7 +25,8 @@ cleanup_guard::cleanup_guard() {
   trace(verbosity::debug, "Cleanup guard armed with signal handlers");
 }
 
-cleanup_guard::~cleanup_guard() {
+cleanup_guard::~cleanup_guard()
+{
   if (m_armed) {
     run_cleanups();
   }
@@ -31,18 +34,21 @@ cleanup_guard::~cleanup_guard() {
   s_active_guard = nullptr;
 }
 
-fn cleanup_guard::add_cleanup(std::function<void()> cleanup_fn) -> void {
+fn cleanup_guard::add_cleanup(std::function<void()> cleanup_fn) -> void
+{
   trace(verbosity::debug, "Adding a cleanup function");
   m_cleanups.push_back(cleanup_fn);
 }
 
-fn cleanup_guard::disarm() -> void {
+fn cleanup_guard::disarm() -> void
+{
   m_armed = false;
   s_active_guard = nullptr;
   trace(verbosity::debug, "Cleanup guard disarmed");
 }
 
-fn cleanup_guard::run_cleanups() -> void {
+fn cleanup_guard::run_cleanups() -> void
+{
   trace(verbosity::info, "Running {} cleanup functions", m_cleanups.size());
 
   // Run in reverse order (LIFO)
@@ -51,7 +57,8 @@ fn cleanup_guard::run_cleanups() -> void {
   }
 }
 
-void cleanup_guard::handle_signal(int sig) {
+void cleanup_guard::handle_signal(int sig)
+{
   // SECURITY: This is a POSIX signal handler. Only async-signal-safe operations
   // are permitted here. Specifically:
   //   - std::print / trace() are NOT async-signal-safe (omitted intentionally)

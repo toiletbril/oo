@@ -1,4 +1,5 @@
 #include "down.hh"
+
 #include "cli.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -15,10 +16,11 @@
 namespace oo {
 
 static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf)
-    -> void {
+    -> void
+{
   unused(netconf.cleanup());
 
-  ip_pool pool;
+  ip_pool pool{ns};
   const subnet s{netconf.get_subnet_octet()};
   unused(pool.free(s));
 
@@ -36,7 +38,8 @@ static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf)
   }
 }
 
-fn down(cli::cli &&cli) -> error_or<ok> {
+fn down(cli::cli &&cli) -> error_or<ok>
+{
   cli.add_use_case("oo down [-options] <namespace>",
                    "Stop the daemon and tear down the namespace.");
 

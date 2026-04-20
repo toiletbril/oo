@@ -5,7 +5,8 @@
 
 namespace oo {
 
-class netlink_socket {
+class netlink_socket
+{
 public:
   netlink_socket();
   ~netlink_socket();

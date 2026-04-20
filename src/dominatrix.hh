@@ -11,7 +11,8 @@ namespace oo {
 
 // Manages DNS configuration for namespace
 // Generates resolv.conf and nsswitch.conf files
-class dominatrix {
+class dominatrix
+{
 public:
   dominatrix(linux_namespace &ns);
   ~dominatrix() = default;

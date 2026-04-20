@@ -1,4 +1,5 @@
 #include "netfilterer.hh"
+
 #include "caps.hh"
 #include "constants.hh"
 #include "debug.hh"
@@ -11,13 +12,15 @@
 
 namespace oo {
 
-netfilterer::netfilterer(linux_namespace &ns) : m_ns(ns) {
+netfilterer::netfilterer(linux_namespace &ns) : m_ns(ns)
+{
   m_backend = detect_backend();
   trace(verbosity::info, "Using firewall backend: {}",
         m_backend == backend::iptables_legacy ? "iptables-legacy" : "nftables");
 }
 
-fn netfilterer::detect_backend() -> backend {
+fn netfilterer::detect_backend() -> backend
+{
   // SECURITY: Store the absolute path so all exec calls use it directly.
   // Never use a bare command name with execvp; a compromised PATH combined
   // with a setuid(0) child would allow arbitrary root code execution.
@@ -41,11 +44,12 @@ fn netfilterer::detect_backend() -> backend {
 }
 
 fn netfilterer::exec_iptables(const std::vector<std::string> &args)
-    -> error_or<ok> {
+    -> error_or<ok>
+{
   pid_t pid = unwrap(oo_linux_syscall(fork));
 
   if (pid == 0) {
-    let su = oo_linux_syscall(setuid, (uid_t)0);
+    let su = oo_linux_syscall(setuid, (uid_t) 0);
     if (su.is_err()) {
       trace(verbosity::error, "setuid(0) failed: {}",
             su.get_error().get_reason());
@@ -82,11 +86,12 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
   return ok{};
 }
 
-fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
+fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok>
+{
   pid_t pid = unwrap(oo_linux_syscall(fork));
 
   if (pid == 0) {
-    let su = oo_linux_syscall(setuid, (uid_t)0);
+    let su = oo_linux_syscall(setuid, (uid_t) 0);
     if (su.is_err()) {
       trace(verbosity::error, "setuid(0) failed: {}",
             su.get_error().get_reason());
@@ -121,7 +126,8 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok> {
 }
 
 fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
-    -> error_or<ok> {
+    -> error_or<ok>
+{
   trace_variables(verbosity::all, host_iface, subnet);
   if (m_backend == backend::iptables_legacy) {
     std::string subnet_str{subnet};
@@ -152,7 +158,8 @@ fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
   return ok{};
 }
 
-fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
+fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok>
+{
   trace_variables(verbosity::all, host_iface);
   if (m_backend == backend::iptables_legacy) {
     std::string iface_str{host_iface};
@@ -185,7 +192,8 @@ fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
   return ok{};
 }
 
-fn netfilterer::cleanup() -> error_or<ok> {
+fn netfilterer::cleanup() -> error_or<ok>
+{
   if (m_cleaned_up) {
     return ok{};
   }
@@ -215,7 +223,7 @@ fn netfilterer::cleanup() -> error_or<ok> {
       pid_t pid = fork_result.get_value();
 
       if (pid == 0) {
-        let su = oo_linux_syscall(setuid, (uid_t)0);
+        let su = oo_linux_syscall(setuid, (uid_t) 0);
         if (su.is_err()) {
           trace(verbosity::error, "setuid(0) failed: {}",
                 su.get_error().get_reason());

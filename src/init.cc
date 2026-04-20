@@ -1,4 +1,5 @@
 #include "init.hh"
+
 #include "caps.hh"
 #include "cli.hh"
 #include "constants.hh"
@@ -11,7 +12,8 @@
 
 namespace oo {
 
-fn init(cli::cli &&cli) -> error_or<ok> {
+fn init(cli::cli &&cli) -> error_or<ok>
+{
   cli.add_use_case("oo init [-options]",
                    "Set file capabilities on the binary (requires root).");
 

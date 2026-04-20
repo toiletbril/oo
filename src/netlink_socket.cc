@@ -1,4 +1,5 @@
 #include "netlink_socket.hh"
+
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_util.hh"
@@ -11,7 +12,8 @@
 
 namespace oo {
 
-netlink_socket::netlink_socket() {
+netlink_socket::netlink_socket()
+{
   let result = open();
   if (result.is_err()) {
     m_init_error = result.get_error().get_owned_reason();
@@ -21,7 +23,8 @@ netlink_socket::netlink_socket() {
 
 netlink_socket::~netlink_socket() { close(); }
 
-fn netlink_socket::open() -> error_or<ok> {
+fn netlink_socket::open() -> error_or<ok>
+{
   let cap_result = linux::raise_capability(CAP_NET_ADMIN);
   if (cap_result.is_err()) {
     return make_error("Failed to raise CAP_NET_ADMIN capability. Try running "
@@ -68,7 +71,8 @@ fn netlink_socket::open() -> error_or<ok> {
   return ok{};
 }
 
-fn netlink_socket::close() -> void {
+fn netlink_socket::close() -> void
+{
   if (m_sock >= 0) {
     unused(linux::oo_close(m_sock));
     trace(verbosity::debug, "Closed netlink socket");
@@ -76,7 +80,8 @@ fn netlink_socket::close() -> void {
   }
 }
 
-fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok> {
+fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok>
+{
   trace_variables(verbosity::all, data, len);
 
   if (m_sock < 0) {
@@ -91,7 +96,8 @@ fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok> {
   return ok{};
 }
 
-fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize> {
+fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize>
+{
   trace_variables(verbosity::all, buf, buf_size);
 
   if (m_sock < 0) {

@@ -1,4 +1,5 @@
 #include "cli.hh"
+
 #include "common.hh"
 #include "debug.hh"
 
@@ -32,7 +33,8 @@ namespace oo::cli {
 flag::flag(enum kind kind, char short_name, std::string_view long_name,
            std::string_view description)
     : m_kind(kind), m_short_name(short_name), m_long_name(long_name),
-      m_description(description) {}
+      m_description(description)
+{}
 
 fn flag::kind() const -> enum kind { return m_kind; }
 fn flag::get_short_name() const -> char { return m_short_name; }
@@ -41,7 +43,8 @@ fn flag::get_description() const -> std::string_view { return m_description; }
 
 flag_boolean::flag_boolean(char short_name, std::string_view long_name,
                            std::string_view description)
-    : flag(kind::boolean, short_name, long_name, description) {}
+    : flag(kind::boolean, short_name, long_name, description)
+{}
 
 fn flag_boolean::toggle() -> void { m_value = !m_value; }
 fn flag_boolean::is_enabled() const -> bool { return m_value; }
@@ -49,7 +52,8 @@ fn flag_boolean::is_enabled() const -> bool { return m_value; }
 flag_repeated_boolean::flag_repeated_boolean(char short_name,
                                              std::string_view long_name,
                                              std::string_view description)
-    : flag(kind::repeated_boolean, short_name, long_name, description) {
+    : flag(kind::repeated_boolean, short_name, long_name, description)
+{
   insist(long_name.empty(), "fuck you");
 }
 
@@ -58,9 +62,11 @@ fn flag_repeated_boolean::get_count() const -> usize { return m_count; }
 
 flag_string::flag_string(char short_name, std::string_view long_name,
                          std::string_view description)
-    : flag(kind::string, short_name, long_name, description) {}
+    : flag(kind::string, short_name, long_name, description)
+{}
 
-fn flag_string::set(std::string_view v) -> void {
+fn flag_string::set(std::string_view v) -> void
+{
   m_value = v;
   m_is_set = true;
 }
@@ -72,9 +78,11 @@ fn flag_string::get_value() const -> std::string_view { return m_value; }
 flag_many_strings::flag_many_strings(char short_name,
                                      std::string_view long_name,
                                      std::string_view description)
-    : flag(kind::many_strings, short_name, long_name, description) {}
+    : flag(kind::many_strings, short_name, long_name, description)
+{}
 
-fn flag_many_strings::append(std::string_view v) -> void {
+fn flag_many_strings::append(std::string_view v) -> void
+{
   m_values.emplace_back(v);
 }
 
@@ -82,19 +90,21 @@ fn flag_many_strings::is_empty() const -> bool { return m_values.empty(); }
 
 fn flag_many_strings::get_size() const -> usize { return m_values.size(); }
 
-fn flag_many_strings::values() const -> std::span<const std::string> {
+fn flag_many_strings::values() const -> std::span<const std::string>
+{
   return m_values;
 }
 
-static fn format_flag_name(const flag *f, bool is_long) -> std::string {
-  if (is_long)
-    return "--" + std::string{f->get_long_name()};
+static fn format_flag_name(const flag *f, bool is_long) -> std::string
+{
+  if (is_long) return "--" + std::string{f->get_long_name()};
   return std::string{"-"} + f->get_short_name();
 }
 
 static fn find_flag(std::span<std::unique_ptr<flag>> flags,
                     const char *flag_start, bool is_long, flag **const out,
-                    const char **value_start) -> bool {
+                    const char **value_start) -> bool
+{
   insist(out != nullptr);
   insist(value_start != nullptr);
   insist(flag_start != nullptr);
@@ -119,8 +129,7 @@ static fn find_flag(std::span<std::unique_ptr<flag>> flags,
 
   for (let const &f : flags) {
     usize len = f->get_long_name().length();
-    if (len == 0 || len <= best)
-      continue;
+    if (len == 0 || len <= best) continue;
     if (std::memcmp(f->get_long_name().data(), flag_start, len) == 0) {
       *out = f.get();
       *value_start = flag_start + len;
@@ -131,7 +140,8 @@ static fn find_flag(std::span<std::unique_ptr<flag>> flags,
   return best > 0;
 }
 
-static fn apply_value(flag *f, const char *value, bool is_long) {
+static fn apply_value(flag *f, const char *value, bool is_long)
+{
   insist(f != nullptr);
   insist(value != nullptr);
   insist(f->kind() == flag::kind::string ||
@@ -145,9 +155,9 @@ static fn apply_value(flag *f, const char *value, bool is_long) {
 
 static fn parse_args_impl(std::span<std::unique_ptr<flag>> flags, int argc,
                           const char *const *argv)
-    -> error_or<std::vector<std::string>> {
-  if (argc <= 0)
-    return {};
+    -> error_or<std::vector<std::string>>
+{
+  if (argc <= 0) return {};
 
   std::vector<std::string> args;
   flag *prev_flag{};
@@ -205,7 +215,8 @@ static fn parse_args_impl(std::span<std::unique_ptr<flag>> flags, int argc,
       }
 
       if (f->kind() == flag::kind::boolean ||
-          f->kind() == flag::kind::repeated_boolean) {
+          f->kind() == flag::kind::repeated_boolean)
+      {
         insist(f != nullptr);
 
         if (f->kind() == flag::kind::boolean)
@@ -256,9 +267,9 @@ static fn parse_args_impl(std::span<std::unique_ptr<flag>> flags, int argc,
 static fn
 parse_args_until_subcommand_impl(std::span<std::unique_ptr<flag>> flags,
                                  int &argc, char **&argv)
-    -> error_or<std::optional<std::string>> {
-  if (argc <= 0)
-    return {std::nullopt};
+    -> error_or<std::optional<std::string>>
+{
+  if (argc <= 0) return {std::nullopt};
 
   flag *prev_flag{};
   bool expect_value = false;
@@ -319,7 +330,8 @@ parse_args_until_subcommand_impl(std::span<std::unique_ptr<flag>> flags,
       }
 
       if (f->kind() == flag::kind::boolean ||
-          f->kind() == flag::kind::repeated_boolean) {
+          f->kind() == flag::kind::repeated_boolean)
+      {
         insist(f != nullptr);
 
         if (f->kind() == flag::kind::boolean)
@@ -361,8 +373,7 @@ parse_args_until_subcommand_impl(std::span<std::unique_ptr<flag>> flags,
                       format_flag_name(prev_flag, prev_is_long) + "' flag");
   }
 
-  if (subcommand_index < 0)
-    return {std::nullopt};
+  if (subcommand_index < 0) return {std::nullopt};
 
   std::string subcommand = argv[subcommand_index];
 
@@ -374,25 +385,30 @@ parse_args_until_subcommand_impl(std::span<std::unique_ptr<flag>> flags,
 }
 
 fn cli::add_use_case(std::string_view pattern, std::string_view description)
-    -> void {
+    -> void
+{
   m_use_cases.push_back({std::string{pattern}, std::string{description}});
 }
 
-fn cli::reset_context() -> void {
+fn cli::reset_context() -> void
+{
   m_flags.clear();
   m_use_cases.clear();
 }
 
-fn cli::parse_args_until_subcommand() -> error_or<std::optional<std::string>> {
+fn cli::parse_args_until_subcommand() -> error_or<std::optional<std::string>>
+{
   return parse_args_until_subcommand_impl(m_flags, m_argc, m_argv);
 }
 
-fn cli::parse_args() -> error_or<std::vector<std::string>> {
+fn cli::parse_args() -> error_or<std::vector<std::string>>
+{
   return parse_args_impl(m_flags, m_argc, m_argv);
 }
 
 static fn wrap_text(std::string_view text, usize width, usize indent)
-    -> std::string {
+    -> std::string
+{
   std::string result;
   std::string indent_str(indent, ' ');
   usize pos = 0;
@@ -420,7 +436,8 @@ static fn wrap_text(std::string_view text, usize width, usize indent)
   return result;
 }
 
-fn cli::show_help() const -> void {
+fn cli::show_help() const -> void
+{
   std::string s;
 
   if (!m_use_cases.empty()) {
@@ -490,12 +507,14 @@ fn cli::show_help() const -> void {
   std::print(stderr, "{}", s);
 }
 
-fn show_version() -> void {
+fn show_version() -> void
+{
   std::println(stderr, "{}-{}-{}\n\n{}{}\n{}", OO_VERSION, BUILD_MODE,
                COMMIT_HASH, COMPILER_COMMAND, ENVCXXFLAGS, OS_INFO);
 }
 
-fn show_message(std::string_view err) -> void {
+fn show_message(std::string_view err) -> void
+{
   std::println(stderr, "oo: {}", err);
 }
 

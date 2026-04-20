@@ -1,4 +1,5 @@
 #include "dominatrix.hh"
+
 #include "debug.hh"
 #include "linux_util.hh"
 
@@ -11,7 +12,8 @@ namespace oo {
 
 dominatrix::dominatrix(linux_namespace &ns) : m_ns(ns) {}
 
-fn dominatrix::is_ip_address(std::string_view s) -> bool {
+fn dominatrix::is_ip_address(std::string_view s) -> bool
+{
   trace_variables(verbosity::all, s);
   struct sockaddr_in sa;
   return inet_pton(AF_INET, s.data(), &(sa.sin_addr)) == 1 ||
@@ -19,7 +21,8 @@ fn dominatrix::is_ip_address(std::string_view s) -> bool {
 }
 
 fn dominatrix::set_dns_servers(const std::vector<std::string> &dns_servers)
-    -> error_or<ok> {
+    -> error_or<ok>
+{
   for (const auto &server : dns_servers) {
     if (!is_ip_address(server)) {
       return make_error("Invalid DNS server IP: " + server);
@@ -30,7 +33,8 @@ fn dominatrix::set_dns_servers(const std::vector<std::string> &dns_servers)
   return ok{};
 }
 
-fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok> {
+fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok>
+{
   trace_variables(verbosity::all, dns_file_path);
   // SECURITY: With CAP_DAC_OVERRIDE active, this binary can open any file on
   // the filesystem regardless of its permissions. The dns_file_path comes from
@@ -46,17 +50,20 @@ fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok> {
   return ok{};
 }
 
-fn dominatrix::get_resolv_conf_path() -> error_or<std::string> {
+fn dominatrix::get_resolv_conf_path() -> error_or<std::string>
+{
   let ns_path = unwrap(m_ns.get_path());
   return (ns_path / "resolv.conf").string();
 }
 
-fn dominatrix::get_nsswitch_conf_path() -> error_or<std::string> {
+fn dominatrix::get_nsswitch_conf_path() -> error_or<std::string>
+{
   let ns_path = unwrap(m_ns.get_path());
   return (ns_path / "nsswitch.conf").string();
 }
 
-fn dominatrix::write_configs() -> error_or<ok> {
+fn dominatrix::write_configs() -> error_or<ok>
+{
   let ns_path = unwrap(m_ns.get_path());
   let resolv_path = ns_path / "resolv.conf";
 

@@ -8,7 +8,8 @@
 namespace oo {
 
 // Check PID liveness and handle stale PID detection
-class pid_tracker {
+class pid_tracker
+{
 public:
   // Check if PID is alive via /proc/<pid>
   static fn is_alive(pid_t pid) -> bool;

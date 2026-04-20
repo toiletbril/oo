@@ -11,7 +11,8 @@ namespace oo {
 
 // Manages firewall rules using iptables-legacy or nftables
 // Priority: iptables-legacy first, then nftables fallback
-class netfilterer {
+class netfilterer
+{
 public:
   netfilterer(linux_namespace &ns);
   ~netfilterer() = default;
@@ -27,7 +28,12 @@ public:
   fn cleanup() -> error_or<ok>;
 
 private:
-  enum class backend { iptables_legacy, nftables, unknown };
+  enum class backend
+  {
+    iptables_legacy,
+    nftables,
+    unknown
+  };
 
   linux_namespace &m_ns;
   backend m_backend{backend::unknown};

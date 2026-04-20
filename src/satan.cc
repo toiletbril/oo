@@ -1,7 +1,9 @@
 #include "satan.hh"
+
 #include "caps.hh"
 #include "constants.hh"
 #include "debug.hh"
+#include "ini.hh"
 #include "linux_util.hh"
 #include "mountain.hh"
 #include "netlinker.hh"
@@ -9,16 +11,15 @@
 
 #include <csignal>
 #include <fcntl.h>
-#include <fstream>
 #include <sched.h>
-#include <sstream>
 #include <sys/wait.h>
 
 namespace oo {
 
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view resolv_conf_path,
-                       std::string_view nsswitch_conf_path) -> error_or<pid_t> {
+                       std::string_view nsswitch_conf_path) -> error_or<pid_t>
+{
   trace(verbosity::info, "Spawning daemon for namespace '{}'", m_ns.get_name());
   unwrap(m_ns.create_dir());
 
@@ -113,6 +114,11 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     }
 
     let daemon_pid = ret.get_value();
+
+    // SECURITY: Namespace setup is complete; monitoring process only waits.
+    // Clears CapEff and CapInh so the reaper holds no elevated privileges.
+    unused(caps::drop_for_exec());
+
     let ok_msg = std::string{constants::DAEMON_MSG_OK} +
                  std::to_string(daemon_pid) + "\n";
     unused(oo_linux_syscall(write, pipes[1], ok_msg.data(), ok_msg.length()));
@@ -168,7 +174,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   return child_pid;
 }
 
-fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
+fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>
+{
   trace_variables(verbosity::debug, daemon_pid, inner_pid);
   let net_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
   int net_fd = unwrap(linux::oo_open(net_ns_path.c_str(), O_RDONLY));
@@ -189,69 +196,49 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
   return ok{};
 }
 
-fn satan::save() const -> error_or<ok> {
+fn satan::save() const -> error_or<ok>
+{
   let ns_path = unwrap(m_ns.get_path());
   let pid_path = ns_path / PID_FILE;
 
-  std::ofstream file(pid_path);
-  if (!file.is_open()) {
-    return make_error("Could not open PID file for writing: " +
-                      pid_path.string() + ": " + linux::get_errno_string());
-  }
-
-  file << "# Process state\n";
-  file << "daemon_pid=" << m_daemon_pid << "\n";
-  file << "child_pid=" << m_child_pid << "\n";
-
-  if (!file.good()) {
-    return make_error("Error writing to PID file");
-  }
+  ini_file file{pid_path};
+  unwrap(file.load());
+  file.set_header("Process state");
+  file.set("daemon_pid", std::to_string(m_daemon_pid));
+  file.set("child_pid", std::to_string(m_child_pid));
+  unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
   return ok{};
 }
 
-fn satan::load() -> error_or<ok> {
+fn satan::load() -> error_or<ok>
+{
   let ns_path = unwrap(m_ns.get_path());
   let pid_path = ns_path / PID_FILE;
 
-  std::ifstream file(pid_path);
-  if (!file.is_open()) {
-    return make_error("Could not open PID file: " + pid_path.string() + ": " +
-                      linux::get_errno_string());
+  std::error_code ec;
+  if (!std::filesystem::exists(pid_path, ec)) {
+    unwrap(oo_error_code(ec, "Could not stat PID file " + pid_path.string()));
+    return make_error("PID file does not exist: " + pid_path.string());
   }
 
-  std::string line;
-  while (std::getline(file, line)) {
-    if (line.empty() || line[0] == '#' || line[0] == ';') {
-      continue;
-    }
+  ini_file file{pid_path};
+  unwrap(file.load());
 
-    let eq_pos = line.find('=');
-    if (eq_pos == std::string::npos) {
-      continue;
-    }
-
-    std::string key = line.substr(0, eq_pos);
-    std::string value = line.substr(eq_pos + 1);
-
-    key.erase(0, key.find_first_not_of(" \t"));
-    key.erase(key.find_last_not_of(" \t") + 1);
-    value.erase(0, value.find_first_not_of(" \t"));
-    value.erase(value.find_last_not_of(" \t") + 1);
-
-    if (key == "daemon_pid") {
-      m_daemon_pid = std::stoi(value);
-    } else if (key == "child_pid") {
-      m_child_pid = std::stoi(value);
-    }
+  if (let v = file.find("daemon_pid")) {
+    m_daemon_pid = std::stoi(*v);
+  }
+  if (let v = file.find("child_pid")) {
+    m_child_pid = std::stoi(*v);
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
   return ok{};
 }
 
-fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok> {
+fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
+{
   if (let r = load(); r.is_err()) {
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
