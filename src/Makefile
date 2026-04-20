@@ -20,7 +20,7 @@ endif
 OUT := ../oo
 OO_VERSION := $(shell cat ../VERSION)
 OS_INFO := $(shell uname -rvom || echo "<no uname>")
-COMMIT_HASH := $(shell git rev-parse HEAD || echo "<no git>")
+COMMIT_HASH := $(shell git rev-parse HEAD 2>/dev/null || echo "<no git>")
 
 # Remember CXXFLAGS passed to us from CLI.
 ENVCXXFLAGS := $(CXXFLAGS)

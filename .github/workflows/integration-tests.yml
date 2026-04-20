@@ -20,21 +20,21 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y --no-install-recommends \
-            clang make libcap-dev libcap2-bin iptables nftables mold
+            clang-20 make libcap-dev libcap2-bin iptables nftables mold
 
       - name: Build
-        run: make MODE=asan
+        run: make MODE=asan CXX=clang++ oo
 
       - name: Create non-root test user
         run: |
           sudo useradd --system --create-home --shell /bin/bash oouser
-          sudo chown -R oouser:oouser .
+          sudo chown -R oouser:oouser $PWD
 
-      - name: Run oo init
+      - name: Run init
         run: sudo ./oo init
 
       - name: Run tests
-        run: sudo -u oouser make test
+        run: sudo -u oouser -- make MODE=asan test
 
       - name: Upload logs on failure
         if: failure()

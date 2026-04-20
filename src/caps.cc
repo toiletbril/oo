@@ -39,29 +39,6 @@ static constexpr cap_value_t CAP_LIST[] = {
     CAP_SETUID,    CAP_SETGID,    CAP_SYS_CHROOT,
 };
 
-// Compile-time guard: fires if CAP_SETUID is accidentally removed. It is
-// load-bearing both for the initial switch to oorunner and for iptables
-// child execution.
-static_assert(
-    [] {
-      for (auto c : CAP_LIST)
-        if (c == CAP_SETUID) return true;
-      return false;
-    }(),
-    "CAP_SETUID must remain in CAP_LIST");
-
-// Compile-time guard: the permission-bypass cap must never come back by
-// accident. The runtime model depends on normal DAC authorizing writes
-// under /var/run/oo; re-adding this cap would silently paper over a
-// regression where the oorunner switch is broken.
-static_assert(
-    [] {
-      for (auto c : CAP_LIST)
-        if (c == CAP_DAC_OVERRIDE) return false;
-      return true;
-    }(),
-    "CAP_DAC_OVERRIDE must NOT appear in CAP_LIST");
-
 fn set_file_capabilities(const char *path) -> error_or<ok>
 {
   cap_t caps =

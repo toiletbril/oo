@@ -109,7 +109,6 @@ invoke namespace operations without `sudo`:
 | `CAP_SYS_PTRACE`   | `setns()` into another process's namespace           |
 | `CAP_SETUID`       | `setuid(0)` in iptables/nftables children            |
 | `CAP_SYS_CHROOT`   | `setns(mnt_fd, CLONE_NEWNS)` for the mount namespace |
-| `CAP_SETPCAP`      | modify the capability bounding set in children       |
 
 These capabilities are used only by the `oo` process itself. All exec'd
 children (the daemon, `oo exec` targets, iptables children) have their
