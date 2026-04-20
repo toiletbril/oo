@@ -21,6 +21,8 @@ netlinker::netlinker(linux_namespace &ns)
     : m_ns(ns), m_sock(), m_cleaned_up(false)
 {
   generate_veth_names();
+  insist(!m_veth_host.empty() && !m_veth_ns.empty(),
+         "veth names must be generated from a non-empty namespace name");
 }
 
 fn netlinker::generate_veth_names() -> void
@@ -410,6 +412,8 @@ fn netlinker::cleanup() -> error_or<ok>
     return ok{};
   }
 
+  insist(!m_veth_host.empty(),
+         "cleanup would call delete_link with an empty interface name");
   let del_result = delete_link(m_veth_host);
   if (del_result.is_err()) {
     trace(verbosity::debug, "Failed to delete veth (may not exist): {}",

@@ -99,6 +99,8 @@ fn linux_namespace::unshare() -> error_or<ok>
 
 fn linux_namespace::get_path() -> error_or<std::filesystem::path>
 {
+  insist(!m_name.empty(),
+         "get_path would return the runtime root for an unnamed namespace");
   return std::filesystem::path{constants::OO_RUN_DIR}.append(m_name);
 }
 

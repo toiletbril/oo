@@ -20,6 +20,10 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view resolv_conf_path,
                        std::string_view nsswitch_conf_path) -> error_or<pid_t>
 {
+  insist(!daemonized_argv.empty(),
+         "spawn_daemon requires at least one argv element for execvp");
+  insist(!daemonized_argv[0].empty(),
+         "daemonized_argv[0] must be the program path");
   trace(verbosity::info, "Spawning daemon for namespace '{}'", m_ns.get_name());
   unwrap(m_ns.create_dir());
 
@@ -113,7 +117,9 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
       exit(EXIT_FAILURE);
     }
 
+    insist(!ret.is_err(), "daemon_pid extraction requires the success branch");
     let daemon_pid = ret.get_value();
+    insist(daemon_pid > 0, "start_daemon must return a valid child PID");
 
     // SECURITY: Namespace setup is complete; monitoring process only waits.
     // Clears CapEff and CapInh so the reaper holds no elevated privileges.
@@ -154,6 +160,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   let n = unwrap(oo_linux_syscall(read, pipes[0], buf, sizeof(buf) - 1));
   unwrap(linux::oo_close(pipes[0]));
 
+  insist(n >= 0 && static_cast<usize>(n) < sizeof(buf),
+         "read returned out-of-range length for null-termination");
   buf[n] = '\0';
   std::string_view msg(buf, n);
 
@@ -239,6 +247,9 @@ fn satan::load() -> error_or<ok>
 
 fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
 {
+  insist(!argv.empty(), "satan::execute requires at least one argv element");
+  insist(!argv[0].empty(), "argv[0] must be the program path for execvp");
+
   if (let r = load(); r.is_err()) {
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }

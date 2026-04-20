@@ -112,6 +112,8 @@ fn network_configurator::initial_setup() -> error_or<ok>
 
   unwrap(m_netfilterer.setup_forward(m_netlinker.get_veth_host_name()));
 
+  insist(!m_default_iface.empty(),
+         "default interface must be recorded before marking setup done");
   m_initial_setup_done = true;
   trace(verbosity::info, "Network configuration complete for {}",
         m_subnet.to_string());
@@ -122,6 +124,10 @@ fn network_configurator::initial_setup() -> error_or<ok>
 fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
 {
   if (!m_initial_setup_done) return make_error("Initial setup not done.");
+
+  insist(m_initial_setup_done,
+         "finish_setup depends on veth pair and NAT rules from initial_setup");
+  insist(daemon_pid > 0, "finish_setup requires a live daemon PID");
 
   // Moving an interface resets its link state, so set_link_up before the move
   // is useless. Move first, then configure from inside the daemon namespace.

@@ -56,6 +56,8 @@ fn set_file_capabilities(const char *path) -> error_or<ok>
 {
   cap_t caps =
       unwrap(oo_non_zero(cap_init(), "Failed to initialize capability state"));
+  insist(caps != nullptr,
+         "cap_init success must yield a non-null capability handle");
   defer { cap_free(caps); };
 
   unwrap(oo_linux_syscall(cap_set_flag, caps, CAP_EFFECTIVE, countof(CAP_LIST),
@@ -95,6 +97,8 @@ fn drop_for_exec() -> error_or<ok>
   // rules.
   cap_t caps =
       unwrap(oo_non_zero(cap_get_proc(), "Failed to get process capabilities"));
+  insist(caps != nullptr,
+         "cap_get_proc success must yield a non-null capability handle");
   defer { cap_free(caps); };
 
   unwrap(oo_linux_syscall(cap_clear_flag, caps, CAP_EFFECTIVE));

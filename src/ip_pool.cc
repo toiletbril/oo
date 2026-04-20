@@ -80,6 +80,8 @@ fn ip_pool::allocate() -> error_or<subnet>
   std::array<bool, POOL_SIZE> taken{};
   for (const let &e : m_file.entries()) {
     let octet = unwrap(parse_octet_from_key(e.key));
+    insist(static_cast<usize>(octet) < POOL_SIZE,
+           "parsed octet escapes the pool bitmap bounds");
     taken[octet] = true;
   }
 
@@ -113,6 +115,8 @@ fn ip_pool::free(subnet s) -> error_or<ok>
                       m_ns.get_name() + "'");
   }
 
+  insist(owner.has_value() && *owner == m_ns.get_name(),
+         "remove runs only after ownership is confirmed");
   m_file.remove(key);
   trace(verbosity::info, "Freed subnet: {}", key);
   return ok{};

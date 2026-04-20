@@ -39,6 +39,7 @@ fn netlink_socket::open() -> error_or<ok>
                       linux::get_errno_string());
   }
   m_sock = sock_result.get_value();
+  insist(m_sock >= 0, "socket() succeeded but returned a negative descriptor");
 
   struct timeval tv{};
   tv.tv_sec = constants::NETLINK_TIMEOUT_SEC;
@@ -48,6 +49,7 @@ fn netlink_socket::open() -> error_or<ok>
   if (timeout_result.is_err()) {
     unwrap(linux::oo_close(m_sock));
     m_sock = -1;
+    insist(m_sock == -1, "closed socket must leave m_sock in the sentinel");
     return make_error("Failed to set netlink socket timeout: " +
                       linux::get_errno_string());
   }
@@ -63,6 +65,7 @@ fn netlink_socket::open() -> error_or<ok>
   if (bind_result.is_err()) {
     unwrap(linux::oo_close(m_sock));
     m_sock = -1;
+    insist(m_sock == -1, "closed socket must leave m_sock in the sentinel");
     return make_error("Failed to bind netlink socket: " +
                       linux::get_errno_string());
   }

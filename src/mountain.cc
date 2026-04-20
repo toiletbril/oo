@@ -22,6 +22,9 @@ fn mountain::bind_mount(std::string_view source, std::string_view target)
     -> error_or<ok>
 {
   trace_variables(verbosity::debug, source, target);
+  insist(source.find('\0') == std::string_view::npos &&
+             target.find('\0') == std::string_view::npos,
+         "mount paths must not contain null bytes; C strings would truncate");
   unwrap(oo_linux_syscall(mount, source.data(), target.data(), nullptr, MS_BIND,
                           nullptr));
   m_mounted_paths.emplace_back(target);

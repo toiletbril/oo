@@ -72,6 +72,8 @@ fn netfilterer::exec_iptables(const std::vector<std::string> &args)
     // SECURITY: Use absolute path (m_backend_path) detected at construction
     // time, never a bare command name, to prevent PATH-hijacking of this
     // setuid(0) child process.
+    insist(!m_backend_path.empty(),
+           "exec_iptables would run a bare command without backend path");
     execvp(m_backend_path.c_str(), const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
@@ -111,6 +113,8 @@ fn netfilterer::exec_nft(const std::vector<std::string> &args) -> error_or<ok>
     exec_args.push_back(nullptr);
 
     // SECURITY: Absolute path prevents PATH-hijacking of setuid(0) child.
+    insist(!m_backend_path.empty(),
+           "exec_nft would run a bare command without backend path");
     execvp(m_backend_path.c_str(), const_cast<char *const *>(exec_args.data()));
     exit(1);
   }
@@ -240,6 +244,8 @@ fn netfilterer::cleanup() -> error_or<ok>
         }
         exec_args.push_back(nullptr);
 
+        insist(!args.empty() && !args[0].empty(),
+               "cleanup command must supply a program path");
         execvp(args[0].c_str(), const_cast<char *const *>(exec_args.data()));
         exit(1);
       } else {

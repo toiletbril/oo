@@ -20,6 +20,8 @@ cleanup_guard::cleanup_guard()
   unused(oo_linux_syscall(sigaction, SIGTERM, &sa, nullptr));
   unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
 
+  insist(s_active_guard == nullptr,
+         "cleanup_guard is not reentrant; nesting would drop prior cleanups");
   s_active_guard = this;
 
   trace(verbosity::debug, "Cleanup guard armed with signal handlers");
@@ -31,6 +33,8 @@ cleanup_guard::~cleanup_guard()
     run_cleanups();
   }
 
+  insist(s_active_guard == this || s_active_guard == nullptr,
+         "a different cleanup_guard is active; signal dispatch would misroute");
   s_active_guard = nullptr;
 }
 

@@ -128,6 +128,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
 
   satan s{ns};
   daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
+  insist(daemon_pid > 0,
+         "spawn_daemon returned success without a valid daemon PID");
 
   unwrap(netconf.finish_setup(daemon_pid));
 

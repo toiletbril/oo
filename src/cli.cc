@@ -398,11 +398,15 @@ fn cli::reset_context() -> void
 
 fn cli::parse_args_until_subcommand() -> error_or<std::optional<std::string>>
 {
+  insist(m_argv != nullptr,
+         "cli::m_argv must not be null for argument parsing");
   return parse_args_until_subcommand_impl(m_flags, m_argc, m_argv);
 }
 
 fn cli::parse_args() -> error_or<std::vector<std::string>>
 {
+  insist(m_argv != nullptr,
+         "cli::m_argv must not be null for argument parsing");
   return parse_args_impl(m_flags, m_argc, m_argv);
 }
 
