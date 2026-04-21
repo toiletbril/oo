@@ -108,11 +108,9 @@ fn linux_namespace::create_dir() -> error_or<ok>
 fn linux_namespace::unshare() -> error_or<ok>
 {
   trace(verbosity::info, "Unsharing network namespace");
-  let result = oo_linux_syscall(::unshare, CLONE_NEWNET);
-  if (result.is_err()) {
-    return result.get_error();
-  }
+  unwrap(linux::oo_unshare(CLONE_NEWNET));
   trace(verbosity::debug, "Network namespace unshared successfully");
+
   return ok{};
 }
 
@@ -124,6 +122,15 @@ fn linux_namespace::get_path() -> error_or<std::filesystem::path>
 }
 
 fn linux_namespace::is_dir_created() -> bool { return m_is_dir_created; }
+
+fn linux_namespace::dir_exists() const -> bool
+{
+  if (m_name.empty()) return false;
+  const std::filesystem::path path =
+      std::filesystem::path{constants::OO_RUN_DIR}.append(m_name);
+  std::error_code ec;
+  return std::filesystem::exists(path, ec) && !ec;
+}
 
 fn linux_namespace::get_name() -> const std::string & { return m_name; }
 

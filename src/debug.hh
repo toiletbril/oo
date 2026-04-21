@@ -183,4 +183,18 @@ forceinline auto t__format_args_impl(const char *names, Args &&...args)
     }                                                                          \
   } while (0)
 
+// Dump all fields of `*this`. On clang uses __builtin_dump_struct; on other
+// compilers the macro expands to nothing. Use from member functions where
+// having the class state in the log aids debugging.
+#if defined __clang__
+#define trace_self(v)                                                          \
+  do {                                                                         \
+    if ((v) <= oo::LOGGER_VERBOSITY) {                                         \
+      trace(v, "this = {}", struct_to_string(*this));                          \
+    }                                                                          \
+  } while (0)
+#else
+#define trace_self(v) ((void) 0)
+#endif
+
 } // namespace oo::debug

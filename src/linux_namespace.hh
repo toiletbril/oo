@@ -24,6 +24,7 @@ public:
   fn validate_name() -> error_or<ok>;
   fn create_dir() -> error_or<ok>;
   fn is_dir_created() -> bool;
+  fn dir_exists() const -> bool;
   fn unshare() -> error_or<ok>;
   fn get_path() -> error_or<std::filesystem::path>;
   fn get_name() -> const std::string &;

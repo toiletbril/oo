@@ -16,14 +16,6 @@ namespace oo {
 
 dominatrix::dominatrix(linux_namespace &ns) : m_ns(ns) {}
 
-dominatrix::~dominatrix()
-{
-  if (m_dns_fd >= 0) {
-    unused(linux::oo_close(m_dns_fd));
-    m_dns_fd = -1;
-  }
-}
-
 fn dominatrix::is_ip_address(std::string_view s) -> bool
 {
   trace_variables(verbosity::all, s);
@@ -42,6 +34,7 @@ fn dominatrix::set_dns_servers(const std::vector<std::string> &dns_servers)
   }
   m_dns_servers = dns_servers;
   trace(verbosity::debug, "Set {} DNS servers", dns_servers.size());
+
   return ok{};
 }
 
@@ -59,8 +52,8 @@ fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok>
   // at a symlink to some oorunner-readable file elsewhere and having the
   // contents bind-mounted into the namespace. Holding the fd also removes
   // the TOCTOU window between validation and the later read in write_configs.
-  int fd = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-  if (fd < 0) {
+  linux::oo_fd fd{::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC)};
+  if (!fd.is_valid()) {
     if (errno == ELOOP) {
       return make_error("--dns-file must not be a symlink: " + path);
     }
@@ -70,19 +63,17 @@ fn dominatrix::set_dns_file(std::string_view dns_file_path) -> error_or<ok>
 
   struct stat st{};
   if (::fstat(fd, &st) != 0) {
-    ::close(fd);
     return make_error("fstat on --dns-file failed: " + path + ": " +
                       linux::get_errno_string());
   }
   if (!S_ISREG(st.st_mode)) {
-    ::close(fd);
     return make_error("--dns-file must be a regular file: " + path);
   }
 
-  if (m_dns_fd >= 0) unused(linux::oo_close(m_dns_fd));
-  m_dns_fd = fd;
+  m_dns_fd = std::move(fd);
   m_dns_file_path = std::move(path);
   trace(verbosity::debug, "Opened DNS file: {}", m_dns_file_path);
+
   return ok{};
 }
 
@@ -103,10 +94,10 @@ fn dominatrix::write_configs() -> error_or<ok>
   let ns_path = unwrap(m_ns.get_path());
   let resolv_path = ns_path / "resolv.conf";
 
-  if (m_dns_fd >= 0) {
+  if (m_dns_fd.is_valid()) {
     // Rewind the held fd. set_dns_file opened it with O_NOFOLLOW so no
     // symlink dance is possible between that call and here.
-    if (::lseek(m_dns_fd, 0, SEEK_SET) == (off_t) -1) {
+    if (let r = linux::oo_lseek(m_dns_fd, 0, SEEK_SET); r.is_err()) {
       return make_error("Could not rewind DNS file: " + m_dns_file_path + ": " +
                         linux::get_errno_string());
     }
@@ -119,17 +110,18 @@ fn dominatrix::write_configs() -> error_or<ok>
     }
 
     char buf[4096];
-    ssize_t n;
-    while ((n = ::read(m_dns_fd, buf, sizeof(buf))) > 0) {
-      dst.write(buf, n);
+    for (;;) {
+      let n = linux::oo_read(m_dns_fd, buf, sizeof(buf));
+      if (n.is_err()) {
+        return make_error("Error reading DNS file " + m_dns_file_path + ": " +
+                          linux::get_errno_string());
+      }
+      if (n.get_value() == 0) break;
+      dst.write(buf, n.get_value());
       if (!dst.good()) {
         return make_error("Error copying DNS file to: " + resolv_path.string() +
                           ": " + linux::get_errno_string());
       }
-    }
-    if (n < 0) {
-      return make_error("Error reading DNS file " + m_dns_file_path + ": " +
-                        linux::get_errno_string());
     }
 
     trace(verbosity::info, "Copied DNS config from {}", m_dns_file_path);
@@ -196,6 +188,7 @@ fn dominatrix::write_configs() -> error_or<ok>
   }
 
   trace(verbosity::info, "Generated nsswitch.conf");
+
   return ok{};
 }
 

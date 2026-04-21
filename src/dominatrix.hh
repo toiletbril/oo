@@ -3,6 +3,7 @@
 #include "common.hh"
 #include "error.hh"
 #include "linux_namespace.hh"
+#include "linux_util.hh"
 
 #include <string>
 #include <vector>
@@ -15,7 +16,7 @@ class dominatrix
 {
 public:
   dominatrix(linux_namespace &ns);
-  ~dominatrix();
+  ~dominatrix() = default;
 
   dominatrix(const dominatrix &) = delete;
   dominatrix &operator=(const dominatrix &) = delete;
@@ -36,7 +37,7 @@ private:
   linux_namespace &m_ns;
   std::vector<std::string> m_dns_servers;
   std::string m_dns_file_path;
-  int m_dns_fd{-1};
+  linux::oo_fd m_dns_fd;
 
   fn is_ip_address(std::string_view s) -> bool;
 };
