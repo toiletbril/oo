@@ -16,8 +16,8 @@ public:
   netlink_socket(const netlink_socket &) = delete;
   netlink_socket &operator=(const netlink_socket &) = delete;
 
-  fn get_fd() const -> int { return m_sock; }
-  fn is_open() const -> bool { return m_sock >= 0; }
+  [[nodiscard]] fn get_fd() const -> int { return m_sock; }
+  [[nodiscard]] fn is_open() const -> bool { return m_sock >= 0; }
 
   fn send_message(const void *data, usize len) -> error_or<ok>;
   fn recv_message(void *buf, usize buf_size) -> error_or<usize>;

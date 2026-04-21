@@ -20,9 +20,9 @@ public:
   file_lock &operator=(const file_lock &) = delete;
   file_lock &operator=(file_lock &&) = delete;
 
-  fn acquire() -> error_or<ok>;
+  [[nodiscard]] fn acquire() -> error_or<ok>;
   fn release() -> error_or<ok>;
-  fn is_held() const -> bool { return m_fd >= 0; }
+  [[nodiscard]] fn is_held() const -> bool { return m_fd >= 0; }
 
 private:
   std::filesystem::path m_path;

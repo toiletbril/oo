@@ -6,7 +6,6 @@
 #include "netlink_builder.hh"
 
 #include <arpa/inet.h>
-#include <cstring>
 #include <linux/if_link.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
@@ -45,6 +44,42 @@ struct route_request
   char buf[ExtraBytes];
 };
 
+namespace {
+
+fn init_link_req(let &req, u16 type, u16 flags, u32 ifindex = 0) -> void
+{
+  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+  req.n.nlmsg_type = type;
+  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
+  req.i.ifi_family = AF_UNSPEC;
+  req.i.ifi_index = ifindex;
+}
+
+fn init_addr_req(let &req, u16 type, u16 flags, u32 ifindex, u8 plen) -> void
+{
+  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+  req.n.nlmsg_type = type;
+  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
+  req.a.ifa_family = AF_INET;
+  req.a.ifa_prefixlen = plen;
+  req.a.ifa_index = ifindex;
+}
+
+fn init_route_req(let &req, u16 type, u16 flags, u8 dst_len) -> void
+{
+  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+  req.n.nlmsg_type = type;
+  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
+  req.r.rtm_family = AF_INET;
+  req.r.rtm_table = RT_TABLE_MAIN;
+  req.r.rtm_protocol = RTPROT_STATIC;
+  req.r.rtm_scope = RT_SCOPE_UNIVERSE;
+  req.r.rtm_type = RTN_UNICAST;
+  req.r.rtm_dst_len = dst_len;
+}
+
+} // namespace
+
 netlinker::netlinker(linux_namespace &ns)
     : m_ns(ns), m_sock(), m_cleaned_up(false)
 {
@@ -80,13 +115,7 @@ fn netlinker::create_veth_pair(std::string_view host_name,
                                std::string_view ns_name) -> error_or<ok>
 {
   link_request<1024> req{};
-
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWLINK;
-  req.n.nlmsg_seq = 1;
-  req.n.nlmsg_pid = 0;
-  req.i.ifi_family = AF_UNSPEC;
+  init_link_req(req, RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL);
 
   netlink_builder builder(&req.n, sizeof(req));
   builder.add_attr_str(IFLA_IFNAME, host_name);
@@ -118,17 +147,10 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
   let ifindex = unwrap(get_ifindex(ifname));
 
   link_request<256> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWLINK;
-  req.i.ifi_family = AF_UNSPEC;
-  req.i.ifi_index = ifindex;
+  init_link_req(req, RTM_NEWLINK, 0, ifindex);
 
-  struct rtattr *rta = reinterpret_cast<struct rtattr *>(req.buf);
-  rta->rta_type = IFLA_NET_NS_PID;
-  rta->rta_len = RTA_LENGTH(sizeof(pid_t));
-  std::memcpy(RTA_DATA(rta), &target_pid, sizeof(pid_t));
-  req.n.nlmsg_len += rta->rta_len;
+  netlink_builder builder(&req.n, sizeof(req));
+  builder.add_attr_pid(IFLA_NET_NS_PID, target_pid);
 
   unwrap(m_sock.transact(&req, req.n.nlmsg_len, "moving interface"));
 
@@ -145,14 +167,6 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  addr_request<256> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWADDR;
-  req.a.ifa_family = AF_INET;
-  req.a.ifa_prefixlen = prefix_len;
-  req.a.ifa_index = ifindex;
-
   trace(verbosity::info, "Adding address {}", std::string{ip});
 
   insist(!ip.empty() && ip.find('\0') == std::string_view::npos,
@@ -162,18 +176,13 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
     return make_error("Invalid IP address: " + std::string{ip});
   }
 
-  struct rtattr *rta = reinterpret_cast<struct rtattr *>(req.buf);
-  rta->rta_type = IFA_LOCAL;
-  rta->rta_len = RTA_LENGTH(sizeof(struct in_addr));
-  std::memcpy(RTA_DATA(rta), &addr, sizeof(struct in_addr));
-  req.n.nlmsg_len += rta->rta_len;
+  addr_request<256> req{};
+  init_addr_req(req, RTM_NEWADDR, NLM_F_CREATE | NLM_F_EXCL, ifindex,
+                prefix_len);
 
-  rta = reinterpret_cast<struct rtattr *>(reinterpret_cast<char *>(&req.n) +
-                                          NLMSG_ALIGN(req.n.nlmsg_len));
-  rta->rta_type = IFA_ADDRESS;
-  rta->rta_len = RTA_LENGTH(sizeof(struct in_addr));
-  std::memcpy(RTA_DATA(rta), &addr, sizeof(struct in_addr));
-  req.n.nlmsg_len += rta->rta_len;
+  netlink_builder builder(&req.n, sizeof(req));
+  builder.add_attr_in_addr(IFA_LOCAL, addr);
+  builder.add_attr_in_addr(IFA_ADDRESS, addr);
 
   unwrap(m_sock.transact(&req, req.n.nlmsg_len, "adding address"));
 
@@ -189,17 +198,9 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   trace_variables(verbosity::debug, dest_ip, prefix_len, gateway);
 
   route_request<256> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWROUTE;
-  req.r.rtm_family = AF_INET;
-  req.r.rtm_table = RT_TABLE_MAIN;
-  req.r.rtm_protocol = RTPROT_STATIC;
-  req.r.rtm_scope = RT_SCOPE_UNIVERSE;
-  req.r.rtm_type = RTN_UNICAST;
-  req.r.rtm_dst_len = prefix_len;
+  init_route_req(req, RTM_NEWROUTE, NLM_F_CREATE, prefix_len);
 
-  char *buf_ptr = req.buf;
+  netlink_builder builder(&req.n, sizeof(req));
 
   if (prefix_len > 0 && !dest_ip.empty() &&
       dest_ip != constants::DEFAULT_GATEWAY_IP)
@@ -210,13 +211,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
     if (inet_pton(AF_INET, dest_ip.data(), &dst) != 1) {
       return make_error("Invalid destination IP: " + std::string{dest_ip});
     }
-
-    struct rtattr *rta = reinterpret_cast<struct rtattr *>(buf_ptr);
-    rta->rta_type = RTA_DST;
-    rta->rta_len = RTA_LENGTH(sizeof(struct in_addr));
-    std::memcpy(RTA_DATA(rta), &dst, sizeof(struct in_addr));
-    req.n.nlmsg_len += rta->rta_len;
-    buf_ptr += rta->rta_len;
+    builder.add_attr_in_addr(RTA_DST, dst);
   }
 
   insist(!gateway.empty() && gateway.find('\0') == std::string_view::npos,
@@ -225,12 +220,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   if (inet_pton(AF_INET, gateway.data(), &gw) != 1) {
     return make_error("Invalid gateway IP: " + std::string{gateway});
   }
-
-  struct rtattr *rta = reinterpret_cast<struct rtattr *>(buf_ptr);
-  rta->rta_type = RTA_GATEWAY;
-  rta->rta_len = RTA_LENGTH(sizeof(struct in_addr));
-  std::memcpy(RTA_DATA(rta), &gw, sizeof(struct in_addr));
-  req.n.nlmsg_len += rta->rta_len;
+  builder.add_attr_in_addr(RTA_GATEWAY, gw);
 
   unwrap(m_sock.transact(&req, req.n.nlmsg_len, "adding route"));
 
@@ -247,11 +237,7 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
   let ifindex = unwrap(get_ifindex(ifname));
 
   link_request<0> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWLINK;
-  req.i.ifi_family = AF_UNSPEC;
-  req.i.ifi_index = ifindex;
+  init_link_req(req, RTM_NEWLINK, 0, ifindex);
   req.i.ifi_flags = IFF_UP;
   req.i.ifi_change = IFF_UP;
 
@@ -269,11 +255,7 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
   let ifindex = unwrap(get_ifindex(ifname));
 
   link_request<0> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_NEWLINK;
-  req.i.ifi_family = AF_UNSPEC;
-  req.i.ifi_index = ifindex;
+  init_link_req(req, RTM_NEWLINK, 0, ifindex);
   req.i.ifi_flags = 0;
   req.i.ifi_change = IFF_UP;
 
@@ -291,11 +273,7 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok>
   let ifindex = unwrap(get_ifindex(ifname));
 
   link_request<0> req{};
-  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-  req.n.nlmsg_type = RTM_DELLINK;
-  req.i.ifi_family = AF_UNSPEC;
-  req.i.ifi_index = ifindex;
+  init_link_req(req, RTM_DELLINK, 0, ifindex);
 
   unwrap(m_sock.transact(&req, req.n.nlmsg_len, "deleting link"));
 

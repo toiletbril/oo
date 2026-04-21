@@ -46,7 +46,7 @@ fn mountain::bind_mount(std::string source, std::string target) -> error_or<ok>
 
 fn mountain::cleanup() -> error_or<ok>
 {
-  for (auto it = m_mounted_paths.rbegin(); it != m_mounted_paths.rend(); ++it) {
+  for (let it = m_mounted_paths.rbegin(); it != m_mounted_paths.rend(); ++it) {
     let result = oo_linux_syscall(umount, it->c_str());
     if (result.is_err()) {
       trace(verbosity::error, "Failed to unmount {}: {}", *it,

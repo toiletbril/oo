@@ -71,7 +71,6 @@ ifeq ($(MODE), rel)
 CXXFLAGS += \
 	-s \
 	-DNDEBUG \
-	-static \
 	-O2
 else ifeq ($(MODE), dbg)
 CXXFLAGS += \

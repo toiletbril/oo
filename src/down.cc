@@ -8,10 +8,10 @@
 #include "linux_util.hh"
 #include "network_configurator.hh"
 #include "pid_tracker.hh"
+#include "privilege_drop.hh"
 #include "satan.hh"
 
 #include <csignal>
-#include <filesystem>
 
 namespace oo {
 
@@ -98,9 +98,18 @@ fn down(cli::cli &&cli) -> error_or<ok>
     }
   }
 
+  // SECURITY: the daemon was owned by the invoking user; the kill above had
+  // to run as that same uid, so `oo.cc` deferred the oorunner switch for
+  // `down`. Perform the switch now -- the remaining work (removing the
+  // namespace directory, writing ip-pool.ini) must happen under oorunner
+  // because that is the account that owns /var/run/oo.
+  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
+
   unused(ns.reset(netconf));
   ip_pool pool{ns};
   unused(pool.free(subnet{netconf.get_subnet_octet()}));
+
+  unused(s.sweep_orphans());
 
   trace(verbosity::info, "Namespace `{}` is down", ns_name);
 

@@ -150,7 +150,7 @@ fn ini_file::find_entry(std::string_view key) -> ini_entry *
 {
   for (let &line : m_lines) {
     if (line->get_kind() != ini_line::kind::entry) continue;
-    auto *e = static_cast<ini_entry *>(line.get());
+    let *e = static_cast<ini_entry *>(line.get());
     if (e->get_key() == key) return e;
   }
   return nullptr;
@@ -160,7 +160,7 @@ fn ini_file::find_entry_const(std::string_view key) const -> const ini_entry *
 {
   for (const let &line : m_lines) {
     if (line->get_kind() != ini_line::kind::entry) continue;
-    const auto *e = static_cast<const ini_entry *>(line.get());
+    const let *e = static_cast<const ini_entry *>(line.get());
     if (e->get_key() == key) return e;
   }
   return nullptr;
@@ -168,7 +168,7 @@ fn ini_file::find_entry_const(std::string_view key) const -> const ini_entry *
 
 fn ini_file::set(std::string_view key, std::string_view value) -> void
 {
-  if (auto *e = find_entry(key); e != nullptr) {
+  if (let *e = find_entry(key); e != nullptr) {
     if (e->get_value() != value) {
       e->set_value(std::string{value});
       m_dirty = true;
@@ -191,7 +191,7 @@ fn ini_file::remove(std::string_view key) -> bool
 {
   for (let it = m_lines.begin(); it != m_lines.end(); ++it) {
     if ((*it)->get_kind() != ini_line::kind::entry) continue;
-    const auto *e = static_cast<const ini_entry *>(it->get());
+    const let *e = static_cast<const ini_entry *>(it->get());
     if (e->get_key() == key) {
       m_lines.erase(it);
       m_dirty = true;
@@ -203,7 +203,7 @@ fn ini_file::remove(std::string_view key) -> bool
 
 fn ini_file::find(std::string_view key) const -> std::optional<std::string>
 {
-  if (const auto *e = find_entry_const(key); e != nullptr) {
+  if (const let *e = find_entry_const(key); e != nullptr) {
     return e->get_value();
   }
   return std::nullopt;
@@ -214,7 +214,7 @@ fn ini_file::entries() const -> std::vector<entry>
   std::vector<entry> out;
   for (const let &line : m_lines) {
     if (line->get_kind() != ini_line::kind::entry) continue;
-    const auto *e = static_cast<const ini_entry *>(line.get());
+    const let *e = static_cast<const ini_entry *>(line.get());
     out.push_back(entry{e->get_key(), e->get_value()});
   }
   return out;

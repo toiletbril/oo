@@ -7,7 +7,7 @@
 
 namespace oo {
 
-struct error
+struct [[nodiscard]] error
 {
   enum code : i8
   {
@@ -18,9 +18,15 @@ struct error
 
   operator std::string_view() const noexcept { return get_reason(); }
 
-  fn get_code() noexcept -> code { return m_code; };
-  fn get_reason() const noexcept -> std::string_view { return m_reason; }
-  fn get_owned_reason() const noexcept -> std::string { return m_reason; }
+  [[nodiscard]] fn get_code() noexcept -> code { return m_code; };
+  [[nodiscard]] fn get_reason() const noexcept -> std::string_view
+  {
+    return m_reason;
+  }
+  [[nodiscard]] fn get_owned_reason() const noexcept -> std::string
+  {
+    return m_reason;
+  }
 
 private:
   code m_code;
@@ -30,7 +36,7 @@ private:
 struct ok
 {};
 
-constexpr auto strip_path_prefix(const char *path) -> const char *
+constexpr fn strip_path_prefix(const char *path) -> const char *
 {
   if (path[0] == '.' && path[1] == '/') {
     return path + 2;
@@ -46,7 +52,7 @@ constexpr auto strip_path_prefix(const char *path) -> const char *
   }
 
 template <typename V>
-struct error_or
+struct [[nodiscard]] error_or
 {
   error_or() : m_data() {}
 
@@ -75,22 +81,25 @@ struct error_or
   // Destructor
   ~error_or() = default;
 
-  bool is_err() const { return std::holds_alternative<error>(m_data); }
-  explicit operator bool() const { return !is_err(); }
+  [[nodiscard]] bool is_err() const
+  {
+    return std::holds_alternative<error>(m_data);
+  }
+  [[nodiscard]] explicit operator bool() const { return !is_err(); }
 
-  V &get_value()
+  [[nodiscard]] V &get_value()
   {
     if (is_err()) debugtrap(".get_value() called on an error");
     return std::get<V>(m_data);
   }
-  V &operator*() { return get_value(); }
+  [[nodiscard]] V &operator*() { return get_value(); }
 
-  V take()
+  [[nodiscard]] V take()
   {
     if (is_err()) debugtrap(".take() called on an error");
     return std::move(std::get<V>(m_data));
   }
-  error get_error() const
+  [[nodiscard]] error get_error() const
   {
     if (!is_err()) debugtrap(".get_error() called on a value");
     return std::get<error>(m_data);
@@ -102,7 +111,7 @@ private:
 
 #define unwrap(error_or_value)                                                 \
   ({                                                                           \
-    auto _r = (error_or_value);                                                \
+    let _r = (error_or_value);                                                 \
     if (!_r) return _r.get_error();                                            \
     _r.take();                                                                 \
   })

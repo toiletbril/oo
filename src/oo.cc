@@ -6,8 +6,6 @@
 #include "error.hh"
 #include "exec.hh"
 #include "init.hh"
-#include "privilege_drop.hh"
-#include "satan.hh"
 #include "up.hh"
 
 namespace oo {
@@ -34,12 +32,12 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
 
   let subcommand = unwrap(cli.parse_args_until_subcommand());
 
-  let verb = flag_verbose.get_count();
+  let v = flag_verbose.get_count();
 
-  if (verb >= static_cast<usize>(verbosity::all))
+  if (v >= static_cast<usize>(verbosity::all))
     LOGGER_VERBOSITY = verbosity::all;
   else
-    LOGGER_VERBOSITY = static_cast<verbosity>(verb);
+    LOGGER_VERBOSITY = static_cast<verbosity>(v);
 
   if (flag_help.is_enabled()) {
     cli.show_help();
@@ -59,15 +57,11 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
 
   cli.reset_context();
 
-  // SECURITY: Every runtime subcommand runs as the oorunner system user,
-  // not as the invoking user and not as root. We do the transition here,
-  // once, so all dispatch paths share the same privilege posture. `init`
-  // must keep root (it writes file capabilities and edits /etc/passwd) and
-  // opts out.
-  const bool is_init_subcommand = *subcommand == "init" || *subcommand == "i";
-  if (!is_init_subcommand) {
-    unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
-  }
+  // SECURITY: Privilege posture is now set per-subcommand. `init` stays
+  // root; `up` and `exec` drop to oorunner on entry; `down` defers its
+  // drop until after the kill so the SIGTERM goes out at the invoking
+  // uid (the daemon is owned by that user). See each subcommand for
+  // the matching `privilege_drop::switch_to_oorunner` call.
 
   // clang-format off
   string_switch (*subcommand) {
@@ -100,7 +94,8 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
 
 } // namespace oo
 
-int main(int argc, char **argv) {
+fn main(int argc, char **argv) -> int
+{
   insist(argc >= 1);
   argc--;
   argv++;

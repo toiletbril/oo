@@ -18,9 +18,9 @@ namespace linux {
 
 using fd = int;
 
-fn get_errno_string() -> std::string;
-fn get_error_string(int errnum) -> std::string;
-fn raise_capability(int cap) -> error_or<ok>;
+[[nodiscard]] fn get_errno_string() -> std::string;
+[[nodiscard]] fn get_error_string(int errnum) -> std::string;
+[[nodiscard]] fn raise_capability(int cap) -> error_or<ok>;
 
 template <typename F, typename... Args>
 fn oo_linux_syscall_impl(const char *text, F syscall_fn, Args... args)
@@ -41,22 +41,25 @@ fn oo_linux_syscall_impl(const char *text, F syscall_fn, Args... args)
 fn make_linux_args(const std::vector<std::string> &args)
     -> std::vector<const char *>;
 
-fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>;
-
-// Helper functions for common syscalls.
-fn oo_kill(pid_t pid, int signal) -> error_or<ok>;
+// SECURITY: oo_exec, oo_kill, oo_setuid, oo_unshare, oo_setns change the
+// process posture in ways that can only be reversed by exiting or another
+// syscall of equal privilege. Silently dropping their error would leave the
+// process in a half-transitioned state.
+[[nodiscard]] fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>;
+[[nodiscard]] fn oo_kill(pid_t pid, int signal) -> error_or<ok>;
 fn oo_sleep_ms(int milliseconds) -> error_or<ok>;
 fn oo_open(const char *path, int flags) -> error_or<fd>;
 fn oo_close(fd fd) -> error_or<ok>;
-fn oo_fork() -> error_or<pid_t>;
+[[nodiscard]] fn oo_fork() -> error_or<pid_t>;
 fn oo_dup2(int src, int dst) -> error_or<ok>;
 fn oo_read(int fd, void *buf, usize count) -> error_or<ssize_t>;
 fn oo_write(int fd, const void *buf, usize count) -> error_or<ssize_t>;
-fn oo_waitpid(pid_t pid, int *status, int options) -> error_or<pid_t>;
-fn oo_setuid(uid_t uid) -> error_or<ok>;
+[[nodiscard]] fn oo_waitpid(pid_t pid, int *status, int options)
+    -> error_or<pid_t>;
+[[nodiscard]] fn oo_setuid(uid_t uid) -> error_or<ok>;
 fn oo_setsid() -> error_or<pid_t>;
-fn oo_unshare(int flags) -> error_or<ok>;
-fn oo_setns(int fd, int nstype) -> error_or<ok>;
+[[nodiscard]] fn oo_unshare(int flags) -> error_or<ok>;
+[[nodiscard]] fn oo_setns(int fd, int nstype) -> error_or<ok>;
 fn oo_lseek(int fd, off_t offset, int whence) -> error_or<off_t>;
 fn oo_chdir(const char *path) -> error_or<ok>;
 
@@ -84,12 +87,12 @@ public:
 
   ~oo_fd() { reset(-1); }
 
-  fn get() const -> int { return m_fd; }
+  [[nodiscard]] fn get() const -> int { return m_fd; }
   operator int() const { return m_fd; }
 
-  fn is_valid() const -> bool { return m_fd >= 0; }
+  [[nodiscard]] fn is_valid() const -> bool { return m_fd >= 0; }
 
-  fn release() -> int
+  [[nodiscard]] fn release() -> int
   {
     int out = m_fd;
     m_fd = -1;

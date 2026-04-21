@@ -18,11 +18,12 @@ public:
   ~mountain() = default;
 
   // Make root mount private (MS_REC | MS_PRIVATE).
-  fn make_root_private() -> error_or<ok>;
+  [[nodiscard]] fn make_root_private() -> error_or<ok>;
 
   // Bind mount a file. Takes owning strings so .c_str() is guaranteed
   // null-terminated for the mount syscall.
-  fn bind_mount(std::string source, std::string target) -> error_or<ok>;
+  [[nodiscard]] fn bind_mount(std::string source, std::string target)
+      -> error_or<ok>;
 
   // Unmount all tracked mounts.
   fn cleanup() -> error_or<ok>;

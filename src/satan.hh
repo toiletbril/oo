@@ -34,16 +34,20 @@ public:
                   std::string_view resolv_conf_path = "",
                   std::string_view nsswitch_conf_path = "") -> error_or<pid_t>;
 
-  // Execute command in existing namespace (does not return on success)
   fn execute(const std::vector<std::string> &argv) -> error_or<ok>;
 
   fn save() const -> error_or<ok>;
   fn load() -> error_or<ok>;
 
-  fn get_daemon_pid() const -> pid_t { return m_daemon_pid; }
+  fn sweep_orphans() -> error_or<ok>;
+
+  [[nodiscard]] fn get_daemon_pid() const -> pid_t { return m_daemon_pid; }
   fn set_daemon_pid(pid_t pid) -> void { m_daemon_pid = pid; }
 
-  fn get_daemon_start_time() const -> u64 { return m_daemon_start_time; }
+  [[nodiscard]] fn get_daemon_start_time() const -> u64
+  {
+    return m_daemon_start_time;
+  }
   fn set_daemon_start_time(u64 s) -> void { m_daemon_start_time = s; }
 
 private:

@@ -27,7 +27,7 @@ forceinline constexpr const char *verbosity_to_string(verbosity v)
   case verbosity::warn: return "WRN";
   case verbosity::debug: return "DBG";
   case verbosity::all: return "ALL";
-  default: return "???    ";
+  default: return "???";
   }
 }
 
@@ -39,7 +39,7 @@ namespace oo::debug {
 
 #define trace(v, ...)                                                          \
   do {                                                                         \
-    if ((v) <= oo::LOGGER_VERBOSITY) {                                         \
+    if ((v) <= oo::LOGGER_VERBOSITY) [[unlikely]] {                            \
       std::print(stderr, "[{}] {:>32} {:>32}(): ", oo::verbosity_to_string(v), \
                  std::string{__FILE__} + ":" + std::to_string(__LINE__),       \
                  __func__);                                                    \
@@ -183,9 +183,6 @@ forceinline auto t__format_args_impl(const char *names, Args &&...args)
     }                                                                          \
   } while (0)
 
-// Dump all fields of `*this`. On clang uses __builtin_dump_struct; on other
-// compilers the macro expands to nothing. Use from member functions where
-// having the class state in the log aids debugging.
 #if defined __clang__
 #define trace_self(v)                                                          \
   do {                                                                         \

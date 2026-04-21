@@ -82,7 +82,7 @@ struct t__exit_scope_help
 /* The length of statically allocated array. */
 #define countof(arr) (sizeof(arr) / sizeof(*(arr)))
 
-forceinline constexpr u64 hash_string(std::string_view s)
+forceinline constexpr fn hash_string(std::string_view s) -> u64
 {
   u64 h = 14695981039346656037u;
   for (const char &b : s) {
@@ -101,6 +101,6 @@ forceinline constexpr u64 hash_string(std::string_view s)
 
 namespace oo {
 
-fn ensure_runtime_dir_exists() -> error_or<ok>;
+[[nodiscard]] fn ensure_runtime_dir_exists() -> error_or<ok>;
 
 } // namespace oo

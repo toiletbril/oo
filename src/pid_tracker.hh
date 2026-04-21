@@ -18,12 +18,13 @@ public:
   // Check the process is alive AND was started at the recorded time. This
   // closes the PID-reuse window where another user's process inherits a
   // recycled pid number. Returns false on any parse failure.
-  static fn is_alive_with_start_time(pid_t pid, u64 expected_start_time)
+  [[nodiscard]] static fn is_alive_with_start_time(pid_t pid,
+                                                   u64 expected_start_time)
       -> bool;
 
   // Check if PID is alive and belongs to expected command
-  static fn is_alive_and_matches(pid_t pid, std::string_view expected_cmdline)
-      -> bool;
+  [[nodiscard]] static fn
+  is_alive_and_matches(pid_t pid, std::string_view expected_cmdline) -> bool;
 
   // Read PID from file
   static fn read_pid_file(std::string_view path) -> error_or<pid_t>;

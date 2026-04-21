@@ -140,8 +140,9 @@ static fn find_flag(std::span<std::unique_ptr<flag>> flags,
   return best > 0;
 }
 
-static fn apply_value(flag *f, const char *value, bool is_long)
+static fn apply_value(flag *f, const char *value, bool is_long) -> void
 {
+  unused(is_long);
   insist(f != nullptr);
   insist(value != nullptr);
   insist(f->kind() == flag::kind::string ||
@@ -207,7 +208,7 @@ static fn parse_args_impl(std::span<std::unique_ptr<flag>> flags, int argc,
           s += *cursor;
         } else {
           std::string_view sv{cursor};
-          auto eq = sv.find('=');
+          let eq = sv.find('=');
           s += (eq != std::string_view::npos) ? sv.substr(0, eq) : sv;
         }
         s += "'";
@@ -322,7 +323,7 @@ parse_args_until_subcommand_impl(std::span<std::unique_ptr<flag>> flags,
           s += *cursor;
         } else {
           std::string_view sv{cursor};
-          auto eq = sv.find('=');
+          let eq = sv.find('=');
           s += (eq != std::string_view::npos) ? sv.substr(0, eq) : sv;
         }
         s += "'";

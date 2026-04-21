@@ -22,10 +22,12 @@ public:
   netfilterer_backend(const netfilterer_backend &) = delete;
   netfilterer_backend &operator=(const netfilterer_backend &) = delete;
 
-  virtual fn setup_nat(std::string_view host_iface, std::string_view subnet)
+  [[nodiscard]] virtual fn setup_nat(std::string_view host_iface,
+                                     std::string_view subnet)
       -> error_or<ok> = 0;
-  virtual fn setup_forward(std::string_view host_iface) -> error_or<ok> = 0;
-  virtual fn cleanup() -> error_or<ok> = 0;
+  [[nodiscard]] virtual fn setup_forward(std::string_view host_iface)
+      -> error_or<ok> = 0;
+  [[nodiscard]] virtual fn cleanup() -> error_or<ok> = 0;
 
 protected:
   netfilterer_backend(linux_namespace &ns, std::string backend_path)
@@ -35,7 +37,8 @@ protected:
   // Fork, setuid(0), drop capabilities, execvp the backend binary and
   // waitpid. argv[0] must be the absolute backend path (not a bare name) to
   // prevent PATH-hijacking of the setuid child. Called by setup/cleanup.
-  fn run_privileged(const std::vector<std::string> &argv) -> error_or<ok>;
+  [[nodiscard]] fn run_privileged(const std::vector<std::string> &argv)
+      -> error_or<ok>;
 
   linux_namespace &m_ns;
   std::string m_backend_path;
@@ -50,10 +53,11 @@ public:
       : netfilterer_backend(ns, std::move(backend_path))
   {}
 
-  fn setup_nat(std::string_view host_iface, std::string_view subnet)
+  [[nodiscard]] fn setup_nat(std::string_view host_iface,
+                             std::string_view subnet) -> error_or<ok> override;
+  [[nodiscard]] fn setup_forward(std::string_view host_iface)
       -> error_or<ok> override;
-  fn setup_forward(std::string_view host_iface) -> error_or<ok> override;
-  fn cleanup() -> error_or<ok> override;
+  [[nodiscard]] fn cleanup() -> error_or<ok> override;
 };
 
 class nftables_backend : public netfilterer_backend
@@ -63,10 +67,11 @@ public:
       : netfilterer_backend(ns, std::move(backend_path))
   {}
 
-  fn setup_nat(std::string_view host_iface, std::string_view subnet)
+  [[nodiscard]] fn setup_nat(std::string_view host_iface,
+                             std::string_view subnet) -> error_or<ok> override;
+  [[nodiscard]] fn setup_forward(std::string_view host_iface)
       -> error_or<ok> override;
-  fn setup_forward(std::string_view host_iface) -> error_or<ok> override;
-  fn cleanup() -> error_or<ok> override;
+  [[nodiscard]] fn cleanup() -> error_or<ok> override;
 };
 
 // Facade that selects an available backend at construction and forwards
@@ -78,10 +83,10 @@ public:
   netfilterer(linux_namespace &ns);
   ~netfilterer() = default;
 
-  fn setup_nat(std::string_view host_iface, std::string_view subnet)
-      -> error_or<ok>;
-  fn setup_forward(std::string_view host_iface) -> error_or<ok>;
-  fn cleanup() -> error_or<ok>;
+  [[nodiscard]] fn setup_nat(std::string_view host_iface,
+                             std::string_view subnet) -> error_or<ok>;
+  [[nodiscard]] fn setup_forward(std::string_view host_iface) -> error_or<ok>;
+  [[nodiscard]] fn cleanup() -> error_or<ok>;
 
 private:
   std::unique_ptr<netfilterer_backend> m_impl;

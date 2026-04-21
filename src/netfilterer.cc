@@ -104,7 +104,7 @@ fn iptables_legacy_backend::cleanup() -> error_or<ok>
   // from internal state. Whitespace splitting is safe because no
   // user-controlled data ever reaches m_cleanup_cmds. args[0] is always
   // the absolute backend path set at construction time.
-  for (const auto &cmd : m_cleanup_cmds) {
+  for (const let &cmd : m_cleanup_cmds) {
     std::vector<std::string> args;
     std::istringstream iss(cmd);
     std::string token;

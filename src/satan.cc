@@ -10,6 +10,7 @@
 #include "pid_tracker.hh"
 #include "privilege_drop.hh"
 
+#include <chrono>
 #include <csignal>
 #include <fcntl.h>
 #include <filesystem>
@@ -34,7 +35,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   unwrap(m_ns.create_dir());
 
   trace(verbosity::debug, "Creating pipe for daemon communication");
-  auto [pipe_rd, pipe_wr] = unwrap(linux::oo_pipe());
+  let[pipe_rd, pipe_wr] = unwrap(linux::oo_pipe());
 
   trace(verbosity::debug, "Forking parent process");
   let child_pid = unwrap(linux::oo_fork());
@@ -291,6 +292,109 @@ fn satan::load() -> error_or<ok>
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
+
+  return ok{};
+}
+
+fn satan::sweep_orphans() -> error_or<ok>
+{
+  std::error_code ec;
+  if (!std::filesystem::exists(constants::OO_RUN_DIR, ec) || ec) {
+    return ok{};
+  }
+
+  for (let &entry :
+       std::filesystem::directory_iterator(constants::OO_RUN_DIR, ec))
+  {
+    if (ec) {
+      trace(verbosity::error, "Failed to enumerate {}: {}",
+            constants::OO_RUN_DIR, ec.message());
+      return ok{};
+    }
+    if (!entry.is_directory(ec) || ec) {
+      continue;
+    }
+
+    const std::string name = entry.path().filename().string();
+    linux_namespace probe_ns{name};
+    satan probe{probe_ns};
+
+    bool orphan = false;
+    if (probe.load().is_err()) {
+      orphan = true;
+    } else if (!pid_tracker::is_alive_with_start_time(
+                   probe.get_daemon_pid(), probe.get_daemon_start_time()))
+    {
+      orphan = true;
+    }
+
+    if (!orphan) {
+      continue;
+    }
+
+    let now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count();
+    const std::filesystem::path target =
+        std::filesystem::path{"/tmp"} /
+        ("oo-orphan-" + name + "-" + std::to_string(now_ms));
+
+    // SECURITY: never follow a symlink at the /tmp target. Another user
+    // may have planted one pointing at a sensitive path; touching it would
+    // let orphan cleanup be weaponized into an out-of-tree write.
+    std::error_code stat_ec;
+    let target_status = std::filesystem::symlink_status(target, stat_ec);
+    if (!stat_ec && target_status.type() == std::filesystem::file_type::symlink)
+    {
+      return make_error("Refusing to clean orphan '" + name + "': target " +
+                        target.string() + " is a symlink");
+    }
+
+    if (!stat_ec && std::filesystem::exists(target_status)) {
+      // Target already occupied -- cannot move in safely. Just drop the
+      // orphan namespace directory.
+      std::error_code rm_ec;
+      std::filesystem::remove_all(entry.path(), rm_ec);
+      if (rm_ec) {
+        trace(verbosity::error, "Failed to remove orphan namespace '{}': {}",
+              name, rm_ec.message());
+        continue;
+      }
+      trace(verbosity::info,
+            "Removed orphan namespace '{}' ({} already exists)", name,
+            target.string());
+      continue;
+    }
+
+    std::error_code rename_ec;
+    std::filesystem::rename(entry.path(), target, rename_ec);
+    if (rename_ec == std::errc::cross_device_link) {
+      // /var/run/oo and /tmp are usually different tmpfs mounts; fall back
+      // to recursive copy then delete the source. Same end state, slower.
+      std::error_code copy_ec;
+      std::filesystem::copy(entry.path(), target,
+                            std::filesystem::copy_options::recursive, copy_ec);
+      if (copy_ec) {
+        trace(verbosity::error,
+              "Failed to copy orphan namespace '{}' to {}: {}", name,
+              target.string(), copy_ec.message());
+        continue;
+      }
+      std::filesystem::remove_all(entry.path(), copy_ec);
+      if (copy_ec) {
+        trace(verbosity::error, "Failed to remove orphan source {}: {}",
+              entry.path().string(), copy_ec.message());
+        continue;
+      }
+    } else if (rename_ec) {
+      trace(verbosity::error, "Failed to move orphan namespace '{}' to {}: {}",
+            name, target.string(), rename_ec.message());
+      continue;
+    }
+
+    trace(verbosity::info, "Moved orphan namespace '{}' to {}", name,
+          target.string());
+  }
 
   return ok{};
 }

@@ -64,9 +64,8 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>
   let os_args = make_linux_args(args);
   let result = oo_linux_syscall(execvp, os_args[0],
                                 const_cast<char *const *>(os_args.data()));
-  if (result.is_err()) {
-    return result.get_error();
-  }
+  insist(result.is_err());
+  unwrap(result);
   unreachable();
 }
 

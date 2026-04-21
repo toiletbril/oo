@@ -56,12 +56,12 @@ fn cleanup_guard::run_cleanups() -> void
   trace(verbosity::info, "Running {} cleanup functions", m_cleanups.size());
 
   // Run in reverse order (LIFO)
-  for (auto it = m_cleanups.rbegin(); it != m_cleanups.rend(); ++it) {
+  for (let it = m_cleanups.rbegin(); it != m_cleanups.rend(); ++it) {
     (*it)();
   }
 }
 
-void cleanup_guard::handle_signal(int sig)
+fn cleanup_guard::handle_signal(int sig) -> void
 {
   // SECURITY: This is a POSIX signal handler. Only async-signal-safe operations
   // are permitted here. Specifically:

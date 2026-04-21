@@ -46,8 +46,14 @@ public:
   // Cleanup veth pair
   fn cleanup() -> error_or<ok>;
 
-  fn get_veth_host_name() const -> std::string_view { return m_veth_host; }
-  fn get_veth_ns_name() const -> std::string_view { return m_veth_ns; }
+  [[nodiscard]] fn get_veth_host_name() const -> std::string_view
+  {
+    return m_veth_host;
+  }
+  [[nodiscard]] fn get_veth_ns_name() const -> std::string_view
+  {
+    return m_veth_ns;
+  }
   fn set_veth_host_name(std::string_view name) -> void { m_veth_host = name; }
 
 private:

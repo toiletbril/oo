@@ -99,7 +99,7 @@ fn drop_for_exec() -> error_or<ok>
   insist(check != nullptr,
          "cap_get_proc success must yield a non-null capability handle");
   defer { cap_free(check); };
-  for (auto cap : CAP_LIST) {
+  for (let cap : CAP_LIST) {
     cap_flag_value_t effective = CAP_SET;
     cap_flag_value_t inheritable = CAP_SET;
     cap_get_flag(check, cap, CAP_EFFECTIVE, &effective);

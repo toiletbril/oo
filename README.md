@@ -3,11 +3,11 @@
 [![Integration Tests](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml/badge.svg?branch=staging)](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml)
 
 Run daemons inside isolated Linux network namespaces from the command line via
-a small binary . Useful for split-tunneling TUN-based VPNs, or anything else
+a small binary. Useful for split-tunneling TUN-based VPNs, or anything else
 that benefits from a per-namespace routing table.
 
-The software is very early stage--the security model is roughly 'I added as
-many assert as I could and there's probably only 3 users using this software'.
+The software is very early stage. The security model is roughly 'I added as
+many asserts as I could and there's probably only 3 users using this software'.
 
 State lives under `/var/run/oo`. Each namespace gets its own subdirectory with
 logs and persistent state files:
@@ -90,13 +90,20 @@ before falling back to `SIGKILL`, configurable with `--timeout=<seconds>`.
 `oo init` sets file capabilities on the binary so unprivileged users can
 invoke namespace operations without `sudo`:
 
-| Capability         | Reason                                               |
-|--------------------|------------------------------------------------------|
-| `CAP_SYS_ADMIN`    | `unshare()`, `setns()`                               |
-| `CAP_NET_ADMIN`    | netlink, routing, veth pair                          |
-| `CAP_SYS_PTRACE`   | `setns()` into another process's namespace           |
-| `CAP_SETUID`       | `setuid(0)` in iptables/nftables children            |
-| `CAP_SYS_CHROOT`   | `setns(mnt_fd, CLONE_NEWNS)` for the mount namespace |
+```cpp
+static constexpr cap_value_t CAP_LIST[] = {
+    CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE,
+    CAP_SETUID,    CAP_SETGID,    CAP_SYS_CHROOT,
+};
+```
+
+| Capability                 | Reason                                               |
+|----------------------------|------------------------------------------------------|
+| `CAP_SYS_ADMIN`            | `unshare()`, `setns()`                               |
+| `CAP_NET_ADMIN`            | netlink, routing, veth pair                          |
+| `CAP_SYS_PTRACE`           | `setns()` into another process's namespace           |
+| `CAP_SETUID`, `CAP_SETGID` | `setuid(0)` in iptables/nftables children            |
+| `CAP_SYS_CHROOT`           | `setns(mnt_fd, CLONE_NEWNS)` for the mount namespace |
 
 These capabilities are used only by the `oo` process itself. All exec'd
 children (the daemon, `oo exec` targets, iptables children) have their
@@ -108,8 +115,6 @@ Runtime directory layout and permissions:
 /var/run/oo/          uurunner:uurunner  0755  (only oo can create entries)
 /var/run/oo/<name>/   uurunner:uurunner  0700  (only creator can access)
 ```
-
-Happy tunneling.
 
 ## Development
 
@@ -129,3 +134,5 @@ $ make MODE=asan test
 ```
 
 Run `make fmt` before committing.
+
+Happy tunneling.

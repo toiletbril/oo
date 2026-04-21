@@ -26,10 +26,10 @@ struct flag
   flag &operator=(const flag &) = delete;
   virtual ~flag() = default;
 
-  fn kind() const -> enum kind;
-  fn get_short_name() const -> char;
-  fn get_long_name() const -> std::string_view;
-  fn get_description() const -> std::string_view;
+  [[nodiscard]] fn kind() const -> enum kind;
+  [[nodiscard]] fn get_short_name() const -> char;
+  [[nodiscard]] fn get_long_name() const -> std::string_view;
+  [[nodiscard]] fn get_description() const -> std::string_view;
 
 protected:
   flag(enum kind kind, char short_name, std::string_view long_name,
@@ -47,7 +47,7 @@ struct flag_boolean : flag
                std::string_view description);
 
   fn toggle() -> void;
-  fn is_enabled() const -> bool;
+  [[nodiscard]] fn is_enabled() const -> bool;
 
 private:
   bool m_value{false};
@@ -59,7 +59,7 @@ struct flag_repeated_boolean : flag
                         std::string_view description);
 
   fn increment() -> void;
-  fn get_count() const -> usize;
+  [[nodiscard]] fn get_count() const -> usize;
 
 private:
   usize m_count{0};
@@ -71,8 +71,8 @@ struct flag_string : flag
               std::string_view description);
 
   fn set(std::string_view v) -> void;
-  fn is_set() const -> bool;
-  fn get_value() const -> std::string_view;
+  [[nodiscard]] fn is_set() const -> bool;
+  [[nodiscard]] fn get_value() const -> std::string_view;
 
 private:
   bool m_is_set{false};
@@ -85,9 +85,9 @@ struct flag_many_strings : flag
                     std::string_view description);
 
   fn append(std::string_view v) -> void;
-  fn get_size() const -> usize;
-  fn is_empty() const -> bool;
-  fn values() const -> std::span<const std::string>;
+  [[nodiscard]] fn get_size() const -> usize;
+  [[nodiscard]] fn is_empty() const -> bool;
+  [[nodiscard]] fn values() const -> std::span<const std::string>;
 
 private:
   std::vector<std::string> m_values;
@@ -106,7 +106,7 @@ struct cli
   template <typename T, typename... Args>
   fn add_flag(Args &&...args) -> T &
   {
-    auto p = std::make_unique<T>(std::forward<Args>(args)...);
+    let p = std::make_unique<T>(std::forward<Args>(args)...);
     T &ref = *p;
     m_flags.push_back(std::move(p));
     return ref;

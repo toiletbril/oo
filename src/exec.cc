@@ -4,6 +4,7 @@
 #include "constants.hh"
 #include "debug.hh"
 #include "linux_namespace.hh"
+#include "privilege_drop.hh"
 #include "satan.hh"
 
 #include <filesystem>
@@ -32,6 +33,11 @@ fn exec(cli::cli &&cli) -> error_or<ok>
   if (args.size() < 2) {
     return make_error("Missing command. Try '--help' for more information.");
   }
+
+  // SECURITY: drop to oorunner for the runtime work. `satan::execute`
+  // later switches back to the invoking uid right before the final execvp
+  // using INVOKING_UID/INVOKING_GID captured here.
+  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
 
   unwrap(ensure_runtime_dir_exists());
 

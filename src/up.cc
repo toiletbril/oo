@@ -8,6 +8,7 @@
 #include "linux_namespace.hh"
 #include "network_configurator.hh"
 #include "pid_tracker.hh"
+#include "privilege_drop.hh"
 #include "satan.hh"
 #include "signal_handler.hh"
 
@@ -67,6 +68,10 @@ fn up(cli::cli &&cli) -> error_or<ok>
     subnet_prefix = static_cast<u8>(parsed);
   }
 
+  // SECURITY: drop to oorunner for the duration of the runtime work. All
+  // writes under /var/run/oo go through ordinary DAC against this account.
+  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
+
   unwrap(ensure_runtime_dir_exists());
 
   std::string ns_name = args[0];
@@ -96,7 +101,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
     network_configurator existing_netconf{ns, subnet{0}};
     unwrap(existing_netconf.load());
     const subnet stale_subnet{existing_netconf.get_subnet_octet()};
-    ns.reset(existing_netconf);
+    unused(ns.reset(existing_netconf));
     unused(pool.free(stale_subnet));
   } else if (ns.dir_exists()) {
     return make_error(
@@ -106,6 +111,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
         (std::filesystem::path{constants::OO_RUN_DIR} / ns_name).string() +
         " if you want to reuse the name.");
   }
+
+  unused(existing_satan.sweep_orphans());
 
   let allocated = unwrap(pool.allocate());
   let subnet = oo::subnet{allocated.get_third_octet(), subnet_prefix};

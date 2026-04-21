@@ -26,12 +26,12 @@ public:
       : m_third_octet(third_octet), m_prefix_len(prefix_len)
   {}
 
-  fn host_ip() const -> std::string;
-  fn ns_ip() const -> std::string;
-  fn to_string() const -> std::string;
+  [[nodiscard]] fn host_ip() const -> std::string;
+  [[nodiscard]] fn ns_ip() const -> std::string;
+  [[nodiscard]] fn to_string() const -> std::string;
 
-  fn get_third_octet() const -> u8 { return m_third_octet; }
-  fn get_prefix_len() const -> u8 { return m_prefix_len; }
+  [[nodiscard]] fn get_third_octet() const -> u8 { return m_third_octet; }
+  [[nodiscard]] fn get_prefix_len() const -> u8 { return m_prefix_len; }
 
 private:
   u8 m_third_octet{0};

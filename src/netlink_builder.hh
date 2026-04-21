@@ -5,6 +5,8 @@
 #include <cstring>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <netinet/in.h>
+#include <sys/types.h>
 
 namespace oo {
 
@@ -33,6 +35,19 @@ public:
   {
     add_attr(type, str.data(), str.length() + 1);
   }
+
+  template <typename T>
+  fn add_attr_pod(u16 type, const T &val) -> void
+  {
+    add_attr(type, &val, sizeof(T));
+  }
+
+  fn add_attr_u32(u16 type, u32 v) -> void { add_attr_pod(type, v); }
+  fn add_attr_in_addr(u16 type, struct in_addr a) -> void
+  {
+    add_attr_pod(type, a);
+  }
+  fn add_attr_pid(u16 type, pid_t p) -> void { add_attr_pod(type, p); }
 
   fn begin_nested(u16 type) -> struct rtattr *
   {

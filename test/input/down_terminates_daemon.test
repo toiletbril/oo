@@ -1,0 +1,29 @@
+#!/bin/sh
+# Regression: `oo down` used to fail with EPERM on kill because the
+# daemon is owned by the invoking user while `down` had already dropped
+# to oorunner. Verify that down completes and the daemon PID is gone.
+
+NS="dt"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+if "$BIN" $FLAGS down "$NS"; then
+  echo "down: succeeded (ok)"
+else
+  echo "down: failed (FAILED)"
+fi
+
+# Give the kernel a moment to reap the pid.
+sleep 1
+
+if kill -0 "$DAEMON_PID" 2>/dev/null; then
+  echo "daemon still alive after down (FAILED)"
+else
+  echo "daemon terminated (ok)"
+fi
