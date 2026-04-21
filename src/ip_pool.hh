@@ -22,9 +22,7 @@ class subnet
 public:
   subnet() = default;
   explicit subnet(u8 third_octet) : m_third_octet(third_octet) {}
-  subnet(u8 third_octet, u8 prefix_len)
-      : m_third_octet(third_octet), m_prefix_len(prefix_len)
-  {}
+  subnet(u8 third_octet, u8 prefix_len);
 
   [[nodiscard]] fn host_ip() const -> std::string;
   [[nodiscard]] fn ns_ip() const -> std::string;

@@ -28,8 +28,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
       '\0', "dns-file", "Mount a file as /etc/resolv.conf. Overrides --dns.");
   let &flag_subnet_prefix = cli.add_flag<cli::flag_string>(
       '\0', "subnet-prefix",
-      "Subnet prefix length (16-30). Default: 30. Wider prefixes overlap "
-      "across namespaces; that is the caller's responsibility.");
+      "Subnet prefix length, from 16 to 30 (default 30). Wider prefixes "
+      "overlap across namespaces.");
   let &flag_at_root = cli.add_flag<cli::flag_boolean>(
       '\0', "at-root",
       "Start the daemon with cwd=/ instead of the caller's current "
@@ -73,7 +73,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
   if (flag_subnet_prefix.is_set()) {
     const std::string prefix_str{flag_subnet_prefix.get_value()};
     char *end = nullptr;
-    const unsigned long parsed = strtoul(prefix_str.c_str(), &end, 10);
+    const u64 parsed = strtoul(prefix_str.c_str(), &end, 10);
     if (end == prefix_str.c_str() || *end != '\0') {
       return make_error("Invalid --subnet-prefix value: " + prefix_str);
     }
@@ -88,9 +88,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
     subnet_prefix = static_cast<u8>(parsed);
   }
 
-  // SECURITY: drop to oorunner for the duration of the runtime work. All
-  // writes under /var/run/oo go through ordinary DAC against this account.
-  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
+  passwd pw;
+  unwrap(pw.su_oorunner());
 
   unwrap(ensure_runtime_dir_exists());
 
@@ -98,13 +97,11 @@ fn up(cli::cli &&cli) -> error_or<ok>
   args.erase(args.begin());
 
   linux_namespace ns{ns_name};
-
-  // Validate name before allocating any resources so the error is immediate.
   unwrap(ns.validate_name());
 
   ip_pool pool{ns};
 
-  satan existing_satan{ns};
+  satan existing_satan{ns, pw};
   if (!existing_satan.load().is_err()) {
     if (pid_tracker::is_alive_with_start_time(
             existing_satan.get_daemon_pid(),
@@ -136,9 +133,13 @@ fn up(cli::cli &&cli) -> error_or<ok>
 
   let allocated = unwrap(pool.allocate());
   let subnet = oo::subnet{allocated.get_third_octet(), subnet_prefix};
-  trace(verbosity::info, "Allocated subnet: `{}`", subnet.to_string());
 
   let netconf = network_configurator{ns, subnet};
+
+  // Create the namespace directory before the first host-visible mutation
+  // so the netfilter cleanup log has a home to land in. Rule insertion in
+  // initial_setup() persists cleanup intent to this directory.
+  unwrap(ns.create_dir());
 
   cleanup_guard guard{};
 
@@ -151,8 +152,6 @@ fn up(cli::cli &&cli) -> error_or<ok>
   // Call below creates network devices. Arm cleanup before the call.
   unwrap(netconf.initial_setup());
 
-  unwrap(ns.create_dir());
-
   if (flag_resolv_conf_path.is_set() || !flag_dns.is_empty()) {
     if (std::filesystem::exists("/var/run/nscd/socket") ||
         std::filesystem::exists("/run/nscd/socket"))
@@ -163,6 +162,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
   }
 
   dominatrix dns(ns);
+
   if (flag_resolv_conf_path.is_set()) {
     unwrap(dns.set_dns_file(flag_resolv_conf_path.get_value()));
   } else if (!flag_dns.is_empty()) {
@@ -178,21 +178,13 @@ fn up(cli::cli &&cli) -> error_or<ok>
   let resolv_path = unwrap(dns.get_resolv_conf_path());
   let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
 
-  // Kill daemon on error after this point; runs first (LIFO) before network
-  // teardown. Error-path cleanup is fast and deterministic, not graceful,
-  // so send SIGKILL directly.
   pid_t daemon_pid = -1;
-  guard.add_cleanup([&daemon_pid]() {
-    if (daemon_pid != -1) {
-      unused(oo_linux_syscall(kill, daemon_pid, SIGKILL));
-    }
-  });
+  guard.add_cleanup(
+      [&daemon_pid]() { unused(linux::oo_kill(daemon_pid, SIGKILL)); });
 
-  satan s{ns};
+  satan s{ns, pw};
   daemon_pid =
       unwrap(s.spawn_daemon(args, start_cwd, resolv_path, nsswitch_path));
-  insist(daemon_pid > 0,
-         "spawn_daemon returned success without a valid daemon PID");
 
   s.set_daemon_start_time(unwrap(pid_tracker::read_start_time(daemon_pid)));
 

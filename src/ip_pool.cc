@@ -9,6 +9,12 @@
 
 namespace oo {
 
+subnet::subnet(u8 third_octet, u8 prefix_len)
+    : m_third_octet(third_octet), m_prefix_len(prefix_len)
+{
+  trace(verbosity::info, "Subnet {}", to_string());
+}
+
 fn subnet::host_ip() const -> std::string
 {
   return "10.0." + std::to_string(m_third_octet) + ".1";

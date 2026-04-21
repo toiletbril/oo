@@ -19,9 +19,6 @@
 
 namespace oo {
 
-uid_t INVOKING_UID = 0;
-gid_t INVOKING_GID = 0;
-
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view start_cwd,
                        std::string_view resolv_conf_path,
@@ -44,7 +41,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   let child_pid = unwrap(linux::oo_fork());
 
   let start_daemon =
-      [&daemonized_argv, start_cwd, resolv_conf_path,
+      [this, &daemonized_argv, start_cwd, resolv_conf_path,
        nsswitch_conf_path](linux_namespace &ns) -> error_or<pid_t> {
     unwrap(ns.unshare());
     trace(verbosity::debug, "Creating new session");
@@ -111,7 +108,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     // the oorunner system account. The log files opened above were
     // created while we were still oorunner, so they end up
     // oorunner-owned 0644 -- readable by the invoking user.
-    unwrap(privilege_drop::switch_to_user(INVOKING_UID, INVOKING_GID));
+    unwrap(m_pw.su());
 
     // SECURITY: Drop all capabilities before exec so the daemon process
     // starts with no elevated privileges. The daemon runs inside the
@@ -119,8 +116,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     unwrap(caps::drop_for_exec());
 
     // Land the daemon in the caller's chosen directory. chdir runs as the
-    // invoking user (switch_to_user above), so the check is the caller's
-    // own x-permission on start_cwd, not oorunner's.
+    // invoking user (m_pw.su() above), so the check is the caller's own
+    // x-permission on start_cwd, not oorunner's.
     trace(verbosity::debug, "Changing daemon cwd to {}",
           std::string{start_cwd});
     unwrap(linux::oo_chdir(std::string{start_cwd}.c_str()));
@@ -157,7 +154,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     // Switch back to the invoking user so `ps` shows the monitor under
     // the human's uid (not oorunner), and clear caps so the reaper holds
     // no elevated privileges.
-    unused(privilege_drop::switch_to_user(INVOKING_UID, INVOKING_GID));
+    unused(m_pw.su());
     unused(caps::drop_for_exec());
 
     let ok_msg = std::string{constants::DAEMON_MSG_OK} +
@@ -328,7 +325,7 @@ fn satan::sweep_orphans() -> error_or<ok>
 
     const std::string name = entry.path().filename().string();
     linux_namespace probe_ns{name};
-    satan probe{probe_ns};
+    satan probe{probe_ns, m_pw};
 
     bool orphan = false;
     if (probe.load().is_err()) {
@@ -440,7 +437,7 @@ fn satan::execute(const std::vector<std::string> &argv,
 
   // SECURITY: Drop back to the invoking user before the final exec so
   // the command runs under the user's uid, not oorunner.
-  unwrap(privilege_drop::switch_to_user(INVOKING_UID, INVOKING_GID));
+  unwrap(m_pw.su());
 
   // SECURITY: Drop all capabilities before exec. setns() (enter_namespace)
   // already ran in this process using its file capabilities. The exec'd

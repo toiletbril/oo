@@ -7,26 +7,36 @@
 
 namespace oo {
 
-namespace privilege_drop {
-
-// Before dispatching any runtime subcommand, switch the process to the
-// oorunner system user while preserving the file capabilities loaded from
-// the binary. The invoking user's uid/gid are written through the out
-// pointers so child processes can drop back to them before exec.
+// Owns the uid/gid pair the process was launched under and the setuid
+// transitions into and out of the oorunner service account. One instance
+// per subcommand invocation: su_oorunner() captures the invoking
+// credentials into members, then forked children call su() to drop back
+// to them before drop_for_exec() and execvp().
 //
 // SECURITY: This is the runtime permission-model invariant. The parent
 // writes to /var/run/oo as oorunner (normal DAC), never via
-// CAP_DAC_OVERRIDE. Capabilities survive via PR_SET_KEEPCAPS and are
-// re-raised into the effective set after setresuid.
-[[nodiscard]] fn switch_to_oorunner(uid_t *out_invoking_uid,
-                                    gid_t *out_invoking_gid) -> error_or<ok>;
+// CAP_DAC_OVERRIDE. Capabilities survive su_oorunner() via
+// PR_SET_KEEPCAPS and are re-raised into the effective set after
+// setresuid. su() preserves no caps; the caller must run drop_for_exec()
+// itself immediately after.
+class passwd
+{
+public:
+  passwd() = default;
 
-// In a forked child, drop back to the invoking user before `drop_for_exec`
-// and `execvp`. The target uid/gid come from `switch_to_oorunner`'s output.
-// No capabilities are preserved; the caller is expected to have already
-// dropped them or to do so immediately.
-[[nodiscard]] fn switch_to_user(uid_t uid, gid_t gid) -> error_or<ok>;
+  passwd(const passwd &) = delete;
+  passwd &operator=(const passwd &) = delete;
 
-} // namespace privilege_drop
+  [[nodiscard]] fn su_oorunner() -> error_or<ok>;
+  [[nodiscard]] fn su() const -> error_or<ok>;
+
+  [[nodiscard]] fn get_invoking_uid() const -> uid_t { return m_invoking_uid; }
+  [[nodiscard]] fn get_invoking_gid() const -> gid_t { return m_invoking_gid; }
+
+private:
+  uid_t m_invoking_uid{0};
+  gid_t m_invoking_gid{0};
+  bool m_captured{false};
+};
 
 } // namespace oo

@@ -12,22 +12,12 @@
 
 namespace oo {
 
-// Invoking user's uid/gid captured before the process switches to oorunner.
-// Set exactly once in oo.cc before dispatching a runtime subcommand and
-// read by the exec paths in satan.cc so they can drop back to this user
-// before the final execvp.
-//
-// SECURITY: If these are read before they have been set (e.g. from a new
-// code path added outside the subcommand dispatcher), child processes would
-// exec as uid=0-of-oorunner. Tests assert the uid matches the invoking
-// user to catch that regression.
-extern uid_t INVOKING_UID;
-extern gid_t INVOKING_GID;
+class passwd;
 
 class satan
 {
 public:
-  satan(linux_namespace &ns) : m_ns(ns) {}
+  satan(linux_namespace &ns, passwd &pw) : m_ns(ns), m_pw(pw) {}
 
   // Spawn daemon with optional DNS config paths for bind mounting.
   // `start_cwd` is the absolute directory the daemon will chdir into just
@@ -59,6 +49,7 @@ public:
 
 private:
   linux_namespace &m_ns;
+  passwd &m_pw;
   pid_t m_daemon_pid{0};
   pid_t m_child_pid{0};
   u64 m_daemon_start_time{0};

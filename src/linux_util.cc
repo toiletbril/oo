@@ -110,8 +110,11 @@ fn oo_fork() -> error_or<pid_t>
 
 fn oo_pipe() -> error_or<std::pair<oo_fd, oo_fd>>
 {
+  // SECURITY: pipe2 with O_CLOEXEC ensures neither end leaks across an exec.
+  // Without it a downstream execvp inherits the pipe FDs, widening the
+  // runtime FD surface past what the caller expects.
   int pipes[2];
-  unwrap(oo_linux_syscall(pipe, pipes));
+  unwrap(oo_linux_syscall(pipe2, pipes, O_CLOEXEC));
   return std::pair<oo_fd, oo_fd>{oo_fd{pipes[0]}, oo_fd{pipes[1]}};
 }
 

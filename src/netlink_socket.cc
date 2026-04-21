@@ -118,21 +118,32 @@ fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize>
   return static_cast<usize>(result.get_value());
 }
 
+// SECURITY: Walk the received buffer with NLMSG_OK before dereferencing
+// fields. A short read, a multi-part message, or a malformed nlmsg_len
+// would otherwise lead to an out-of-bounds read of the stack buffer. The
+// length argument must be an lvalue because NLMSG_NEXT mutates it.
 fn netlink_socket::transact(void *req, usize req_len, std::string_view op)
     -> error_or<ok>
 {
   unwrap(send_message(req, req_len));
 
   char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+  usize recv_len = unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+  unsigned int len = static_cast<unsigned int>(recv_len);
 
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error " + std::string{op} + ": " +
-                        linux::get_error_string(-err->error));
+  for (struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
+       NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len))
+  {
+    if (resp->nlmsg_type == NLMSG_ERROR) {
+      if (resp->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
+        return make_error("Truncated netlink error for " + std::string{op});
+      }
+      struct nlmsgerr *err =
+          reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
+      if (err->error != 0) {
+        return make_error("Netlink error " + std::string{op} + ": " +
+                          linux::get_error_string(-err->error));
+      }
     }
   }
 
@@ -146,23 +157,34 @@ fn netlink_socket::transact_loop(void *req, usize req_len, std::string_view op)
 
   char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
   for (;;) {
-    unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+    usize recv_len = unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+    unsigned int len = static_cast<unsigned int>(recv_len);
+    bool terminal = false;
 
-    struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-
-    if (resp->nlmsg_type == NLMSG_ERROR) {
-      struct nlmsgerr *err =
-          reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-      if (err->error != 0) {
-        return make_error("Netlink error " + std::string{op} + ": " +
-                          linux::get_error_string(-err->error));
+    for (struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
+         NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len))
+    {
+      if (resp->nlmsg_type == NLMSG_ERROR) {
+        if (resp->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
+          return make_error("Truncated netlink error for " + std::string{op});
+        }
+        struct nlmsgerr *err =
+            reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
+        if (err->error != 0) {
+          return make_error("Netlink error " + std::string{op} + ": " +
+                            linux::get_error_string(-err->error));
+        }
+        terminal = true;
+        break;
       }
-      break;
+
+      if (resp->nlmsg_type == NLMSG_DONE) {
+        terminal = true;
+        break;
+      }
     }
 
-    if (resp->nlmsg_type == NLMSG_DONE) {
-      break;
-    }
+    if (terminal) break;
   }
 
   return ok{};

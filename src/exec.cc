@@ -44,8 +44,9 @@ fn exec(cli::cli &&cli) -> error_or<ok>
 
   // SECURITY: drop to oorunner for the runtime work. `satan::execute`
   // later switches back to the invoking uid right before the final execvp
-  // using INVOKING_UID/INVOKING_GID captured here.
-  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
+  // using the credentials captured in `pw`.
+  passwd pw;
+  unwrap(pw.su_oorunner());
 
   unwrap(ensure_runtime_dir_exists());
 
@@ -53,7 +54,7 @@ fn exec(cli::cli &&cli) -> error_or<ok>
   args.erase(args.begin());
 
   linux_namespace ns{ns_name};
-  satan s{ns};
+  satan s{ns, pw};
 
   unwrap(s.execute(args, start_cwd));
 

@@ -40,10 +40,28 @@ protected:
   [[nodiscard]] fn run_privileged(const std::vector<std::string> &argv)
       -> error_or<ok>;
 
+  // Persist one cleanup argv (an `iptables -D ...` form) to the namespace's
+  // netfilter log. Call before inserting the corresponding rule so that a
+  // crash between persist and insert leaves only a benign ghost entry
+  // (iptables -D of a non-existent rule errors out during cleanup and is
+  // logged but not propagated).
+  [[nodiscard]] fn persist_cleanup(const std::vector<std::string> &argv)
+      -> error_or<ok>;
+
+  // Read cleanup argvs previously persisted by this namespace. Empty
+  // result if the log does not exist.
+  [[nodiscard]] fn load_persisted_cleanups()
+      -> error_or<std::vector<std::vector<std::string>>>;
+
+  // Remove the persisted log on successful cleanup.
+  fn remove_persisted_cleanups() -> void;
+
   linux_namespace &m_ns;
   std::string m_backend_path;
-  std::vector<std::string> m_cleanup_cmds;
+  std::vector<std::vector<std::string>> m_cleanup_cmds;
   bool m_cleaned_up{false};
+
+  static constexpr const char *NETFILTER_LOG_FILE = "netfilter.log";
 };
 
 class iptables_legacy_backend : public netfilterer_backend

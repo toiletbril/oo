@@ -23,12 +23,18 @@ public:
 
   fn add_attr(u16 type, const void *data, usize len) -> void
   {
+    // SECURITY: abort on buffer overflow rather than silently corrupt the
+    // heap-adjacent message buffer. m_max_len is the size of the buffer the
+    // header lives in, so every growing write must fit within it.
     usize rta_len = RTA_LENGTH(len);
+    usize new_len = NLMSG_ALIGN(m_hdr->nlmsg_len) + RTA_ALIGN(rta_len);
+    insist(new_len <= m_max_len,
+           "netlink_builder: attribute would overflow message buffer");
     struct rtattr *rta = NLMSG_TAIL(m_hdr);
     rta->rta_type = type;
     rta->rta_len = rta_len;
     if (len > 0) std::memcpy(RTA_DATA(rta), data, len);
-    m_hdr->nlmsg_len = NLMSG_ALIGN(m_hdr->nlmsg_len) + RTA_ALIGN(rta_len);
+    m_hdr->nlmsg_len = new_len;
   }
 
   fn add_attr_str(u16 type, std::string_view str) -> void
@@ -61,7 +67,12 @@ public:
     nest->rta_len = (char *) NLMSG_TAIL(m_hdr) - (char *) nest;
   }
 
-  fn add_raw_to_len(usize len) -> void { m_hdr->nlmsg_len += len; }
+  fn add_raw_to_len(usize len) -> void
+  {
+    insist(m_hdr->nlmsg_len + len <= m_max_len,
+           "netlink_builder: raw length addition would overflow buffer");
+    m_hdr->nlmsg_len += len;
+  }
 
 private:
   struct nlmsghdr *m_hdr;

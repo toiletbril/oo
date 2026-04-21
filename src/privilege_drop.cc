@@ -11,8 +11,6 @@
 
 namespace oo {
 
-namespace privilege_drop {
-
 // Re-raise the effective set after a setresuid transition. KEEPCAPS retains
 // the permitted set across uid changes, but the kernel still clears the
 // effective set on any uid transition for a non-root process. We raise the
@@ -62,16 +60,13 @@ static fn raise_effective_caps() -> error_or<ok>
   return ok{};
 }
 
-fn switch_to_oorunner(uid_t *out_invoking_uid, gid_t *out_invoking_gid)
-    -> error_or<ok>
+fn passwd::su_oorunner() -> error_or<ok>
 {
-  insist(out_invoking_uid != nullptr,
-         "switch_to_oorunner requires an out uid pointer");
-  insist(out_invoking_gid != nullptr,
-         "switch_to_oorunner requires an out gid pointer");
+  insist(!m_captured,
+         "passwd::su_oorunner must be called at most once per instance");
 
-  *out_invoking_uid = ::getuid();
-  *out_invoking_gid = ::getgid();
+  m_invoking_uid = ::getuid();
+  m_invoking_gid = ::getgid();
 
   let cred = unwrap(oorunner::lookup());
   insist(cred.uid > 0 && cred.gid > 0,
@@ -105,41 +100,48 @@ fn switch_to_oorunner(uid_t *out_invoking_uid, gid_t *out_invoking_gid)
 
   unwrap(raise_effective_caps());
 
+  m_captured = true;
+
   trace(verbosity::debug,
         "Switched to oorunner (uid={}, gid={}); invoking user was "
         "(uid={}, gid={})",
-        cred.uid, cred.gid, *out_invoking_uid, *out_invoking_gid);
+        cred.uid, cred.gid, m_invoking_uid, m_invoking_gid);
   return ok{};
 }
 
-fn switch_to_user(uid_t uid, gid_t gid) -> error_or<ok>
+fn passwd::su() const -> error_or<ok>
 {
   // SECURITY: This call runs in forked children right before drop_for_exec
   // and execvp. No caps are preserved; the child inherits an empty ambient
   // set and drop_for_exec clears effective/inheritable.
-  unwrap(oo_linux_syscall(setgroups, (size_t) 1, &gid));
+  insist(m_captured,
+         "passwd::su called before su_oorunner captured invoking credentials");
+
+  unwrap(oo_linux_syscall(setgroups, (size_t) 1, &m_invoking_gid));
   gid_t got_groups[2]{};
   int ngroups = ::getgroups(countof(got_groups), got_groups);
-  insist(ngroups == 1 && got_groups[0] == gid,
+  insist(ngroups == 1 && got_groups[0] == m_invoking_gid,
          "setgroups returned success but supplementary groups are not clean");
 
-  unwrap(oo_linux_syscall(setresgid, gid, gid, gid));
+  unwrap(oo_linux_syscall(setresgid, m_invoking_gid, m_invoking_gid,
+                          m_invoking_gid));
   gid_t rgid = 0, egid = 0, sgid = 0;
   unwrap(oo_linux_syscall(getresgid, &rgid, &egid, &sgid));
-  insist(rgid == gid && egid == gid && sgid == gid,
+  insist(rgid == m_invoking_gid && egid == m_invoking_gid &&
+             sgid == m_invoking_gid,
          "setresgid returned success but not all three gid slots match");
 
-  unwrap(oo_linux_syscall(setresuid, uid, uid, uid));
+  unwrap(oo_linux_syscall(setresuid, m_invoking_uid, m_invoking_uid,
+                          m_invoking_uid));
   uid_t ruid = 0, euid = 0, suid = 0;
   unwrap(oo_linux_syscall(getresuid, &ruid, &euid, &suid));
-  insist(ruid == uid && euid == uid && suid == uid,
+  insist(ruid == m_invoking_uid && euid == m_invoking_uid &&
+             suid == m_invoking_uid,
          "setresuid returned success but not all three uid slots match");
 
   trace(verbosity::debug, "Switched back to invoking user (uid={}, gid={})",
-        uid, gid);
+        m_invoking_uid, m_invoking_gid);
   return ok{};
 }
-
-} // namespace privilege_drop
 
 } // namespace oo

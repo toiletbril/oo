@@ -55,7 +55,8 @@ fn down(cli::cli &&cli) -> error_or<ok>
   std::string ns_name = args[0];
   linux_namespace ns{ns_name};
 
-  satan s{ns};
+  passwd pw;
+  satan s{ns, pw};
   if (let r = s.load(); r.is_err()) {
     return make_error("Namespace '" + ns_name + "' is not running");
   }
@@ -103,7 +104,7 @@ fn down(cli::cli &&cli) -> error_or<ok>
   // `down`. Perform the switch now -- the remaining work (removing the
   // namespace directory, writing ip-pool.ini) must happen under oorunner
   // because that is the account that owns /var/run/oo.
-  unwrap(privilege_drop::switch_to_oorunner(&INVOKING_UID, &INVOKING_GID));
+  unwrap(pw.su_oorunner());
 
   unused(ns.reset(netconf));
   ip_pool pool{ns};
