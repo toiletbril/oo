@@ -47,7 +47,9 @@ inline constexpr std::string RESOLV_CONF_FILE = "resolv.conf";
 inline constexpr std::string NSSWITCH_CONF_FILE = "nsswitch.conf";
 
 inline constexpr std::string_view IP_PREFIX = "10.0.";
-inline constexpr u8 SUBNET_PREFIX_LEN = 30;
+inline constexpr u8 DEFAULT_SUBNET_PREFIX_LEN = 30;
+inline constexpr u8 MIN_SUBNET_PREFIX_LEN = 16;
+inline constexpr u8 MAX_SUBNET_PREFIX_LEN = 30;
 inline constexpr usize SUBNET_POOL_SIZE = 256;
 
 inline constexpr usize GRACEFUL_SHUTDOWN_SLEEP_MS = 100;

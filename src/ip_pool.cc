@@ -11,15 +11,24 @@ namespace oo {
 
 fn subnet::host_ip() const -> std::string
 {
-  return "10.0." + std::to_string(third_octet) + ".1";
+  return "10.0." + std::to_string(m_third_octet) + ".1";
 }
 
 fn subnet::ns_ip() const -> std::string
 {
-  return "10.0." + std::to_string(third_octet) + ".2";
+  return "10.0." + std::to_string(m_third_octet) + ".2";
 }
 
 fn subnet::to_string() const -> std::string
+{
+  return "10.0." + std::to_string(m_third_octet) + ".0/" +
+         std::to_string(static_cast<u32>(m_prefix_len));
+}
+
+// The pool key always uses /30 regardless of the chosen prefix so the
+// bitmap remains third-octet keyed. Wider prefixes chosen by the user are
+// stored per-namespace in network.ini, not in the pool.
+static fn pool_key(u8 third_octet) -> std::string
 {
   return "10.0." + std::to_string(third_octet) + ".0/30";
 }
@@ -67,11 +76,14 @@ static fn parse_octet_from_key(const std::string &key) -> error_or<u8>
   if (end == octet_str.c_str() || *end != '\0' || v >= 256) {
     return make_error("Invalid pool key: " + key);
   }
+
   return static_cast<u8>(v);
 }
 
 fn ip_pool::allocate() -> error_or<subnet>
 {
+  trace(verbosity::debug, "Allocating subnet for namespace '{}'",
+        m_ns.get_name());
   if (!m_lock.is_held()) {
     return make_error("Cannot allocate: IP pool lock not held");
   }
@@ -87,8 +99,8 @@ fn ip_pool::allocate() -> error_or<subnet>
 
   for (usize i = 0; i < POOL_SIZE; ++i) {
     if (!taken[i]) {
-      subnet s{static_cast<u8>(i)};
-      m_file.append(s.to_string(), m_ns.get_name());
+      const subnet s{static_cast<u8>(i)};
+      m_file.append(pool_key(s.get_third_octet()), m_ns.get_name());
       trace(verbosity::info, "Allocated subnet: {} -> {}", s.to_string(),
             m_ns.get_name());
       return s;
@@ -100,12 +112,14 @@ fn ip_pool::allocate() -> error_or<subnet>
 
 fn ip_pool::free(subnet s) -> error_or<ok>
 {
+  trace(verbosity::debug, "free({}/{})", s.get_third_octet(),
+        s.get_prefix_len());
   if (!m_lock.is_held()) {
     return make_error("Cannot free: IP pool lock not held");
   }
   unwrap(m_file.load());
 
-  let key = s.to_string();
+  const std::string key = pool_key(s.get_third_octet());
   let owner = m_file.find(key);
   if (!owner.has_value()) {
     return make_error("Subnet " + key + " was not allocated");
@@ -119,6 +133,7 @@ fn ip_pool::free(subnet s) -> error_or<ok>
          "remove runs only after ownership is confirmed");
   m_file.remove(key);
   trace(verbosity::info, "Freed subnet: {}", key);
+
   return ok{};
 }
 

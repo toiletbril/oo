@@ -1,6 +1,7 @@
 #include "up.hh"
 
 #include "cli.hh"
+#include "constants.hh"
 #include "debug.hh"
 #include "dominatrix.hh"
 #include "ip_pool.hh"
@@ -24,6 +25,10 @@ fn up(cli::cli &&cli) -> error_or<ok>
       '\0', "dns", "Append a nameserver to resolv.conf. Repeatable.");
   let &flag_resolv_conf_path = cli.add_flag<cli::flag_string>(
       '\0', "dns-file", "Mount a file as /etc/resolv.conf. Overrides --dns.");
+  let &flag_subnet_prefix = cli.add_flag<cli::flag_string>(
+      '\0', "subnet-prefix",
+      "Subnet prefix length (16-30). Default: 30. Wider prefixes overlap "
+      "across namespaces; that is the caller's responsibility.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -41,6 +46,25 @@ fn up(cli::cli &&cli) -> error_or<ok>
   if (args.size() < 2) {
     return make_error(
         "Missing daemon command. Try '--help' for more information.");
+  }
+
+  u8 subnet_prefix = constants::DEFAULT_SUBNET_PREFIX_LEN;
+  if (flag_subnet_prefix.is_set()) {
+    const std::string prefix_str{flag_subnet_prefix.get_value()};
+    char *end = nullptr;
+    const unsigned long parsed = strtoul(prefix_str.c_str(), &end, 10);
+    if (end == prefix_str.c_str() || *end != '\0') {
+      return make_error("Invalid --subnet-prefix value: " + prefix_str);
+    }
+    if (parsed < constants::MIN_SUBNET_PREFIX_LEN ||
+        parsed > constants::MAX_SUBNET_PREFIX_LEN)
+    {
+      return make_error("--subnet-prefix must be between " +
+                        std::to_string(constants::MIN_SUBNET_PREFIX_LEN) +
+                        " and " +
+                        std::to_string(constants::MAX_SUBNET_PREFIX_LEN));
+    }
+    subnet_prefix = static_cast<u8>(parsed);
   }
 
   unwrap(ensure_runtime_dir_exists());
@@ -74,9 +98,17 @@ fn up(cli::cli &&cli) -> error_or<ok>
     const subnet stale_subnet{existing_netconf.get_subnet_octet()};
     ns.reset(existing_netconf);
     unused(pool.free(stale_subnet));
+  } else if (ns.dir_exists()) {
+    return make_error(
+        "Namespace '" + ns_name +
+        "' directory exists but has no oo state; refusing to adopt. "
+        "Remove " +
+        (std::filesystem::path{constants::OO_RUN_DIR} / ns_name).string() +
+        " if you want to reuse the name.");
   }
 
-  let subnet = unwrap(pool.allocate());
+  let allocated = unwrap(pool.allocate());
+  let subnet = oo::subnet{allocated.get_third_octet(), subnet_prefix};
   trace(verbosity::info, "Allocated subnet: `{}`", subnet.to_string());
 
   let netconf = network_configurator{ns, subnet};
@@ -120,11 +152,12 @@ fn up(cli::cli &&cli) -> error_or<ok>
   let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
 
   // Kill daemon on error after this point; runs first (LIFO) before network
-  // teardown.
+  // teardown. Error-path cleanup is fast and deterministic, not graceful,
+  // so send SIGKILL directly.
   pid_t daemon_pid = -1;
   guard.add_cleanup([&daemon_pid]() {
     if (daemon_pid != -1) {
-      unused(oo_linux_syscall(kill, daemon_pid, SIGTERM));
+      unused(oo_linux_syscall(kill, daemon_pid, SIGKILL));
     }
   });
 

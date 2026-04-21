@@ -312,7 +312,7 @@ fn netlinker::cleanup() -> error_or<ok>
 
   if (!m_sock.is_open()) {
     m_cleaned_up = true;
-    trace(verbosity::debug, "Socket closed, skipping veth deletion");
+    trace(verbosity::error, "Socket closed, skipping veth deletion");
     return ok{};
   }
 

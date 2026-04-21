@@ -81,6 +81,7 @@ fn network_configurator::enable_ip_forward() -> error_or<ok>
 
 fn network_configurator::initial_setup() -> error_or<ok>
 {
+  trace_self(verbosity::debug);
   if (m_initial_setup_done) {
     trace(verbosity::debug, "Network already configured");
     return ok{};
@@ -104,7 +105,7 @@ fn network_configurator::initial_setup() -> error_or<ok>
 
   unwrap(m_netlinker.add_address(m_netlinker.get_veth_host_name(),
                                  m_subnet.host_ip(),
-                                 constants::SUBNET_PREFIX_LEN));
+                                 m_subnet.get_prefix_len()));
 
   unwrap(m_netlinker.set_link_up(m_netlinker.get_veth_host_name()));
 
@@ -123,6 +124,8 @@ fn network_configurator::initial_setup() -> error_or<ok>
 
 fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
 {
+  trace_variables(verbosity::debug, daemon_pid);
+  trace_self(verbosity::debug);
   if (!m_initial_setup_done) return make_error("Initial setup not done.");
 
   insist(m_initial_setup_done,
@@ -134,21 +137,20 @@ fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
   unwrap(m_netlinker.move_to_namespace(m_netlinker.get_veth_ns_name(),
                                        daemon_pid));
 
-  int orig_ns_fd =
-      unwrap(linux::oo_open(constants::PROC_SELF_NS_NET.data(), O_RDONLY));
-  defer { unused(linux::oo_close(orig_ns_fd)); };
+  linux::oo_fd orig_ns_fd{
+      unwrap(linux::oo_open(constants::PROC_SELF_NS_NET.data(), O_RDONLY))};
 
   let daemon_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
-  int daemon_ns_fd = unwrap(linux::oo_open(daemon_ns_path.c_str(), O_RDONLY));
-  defer { unused(linux::oo_close(daemon_ns_fd)); };
+  linux::oo_fd daemon_ns_fd{
+      unwrap(linux::oo_open(daemon_ns_path.c_str(), O_RDONLY))};
 
-  unwrap(oo_linux_syscall(setns, daemon_ns_fd, CLONE_NEWNET));
-  defer { unused(oo_linux_syscall(setns, orig_ns_fd, CLONE_NEWNET)); };
+  unwrap(linux::oo_setns(daemon_ns_fd, CLONE_NEWNET));
+  defer { unused(linux::oo_setns(orig_ns_fd, CLONE_NEWNET)); };
 
   netlinker ns_linker{m_ns};
   unwrap(ns_linker.set_link_up("lo"));
   unwrap(ns_linker.add_address(m_netlinker.get_veth_ns_name(), m_subnet.ns_ip(),
-                               constants::SUBNET_PREFIX_LEN));
+                               m_subnet.get_prefix_len()));
   unwrap(ns_linker.set_link_up(m_netlinker.get_veth_ns_name()));
   unwrap(ns_linker.add_route("0.0.0.0", 0, m_subnet.host_ip()));
 
@@ -176,12 +178,15 @@ fn network_configurator::save() const -> error_or<ok>
   unwrap(file.load());
   file.set_header("Network state");
   file.set("subnet_octet",
-           std::to_string(static_cast<u32>(m_subnet.third_octet)));
+           std::to_string(static_cast<u32>(m_subnet.get_third_octet())));
+  file.set("subnet_prefix",
+           std::to_string(static_cast<u32>(m_subnet.get_prefix_len())));
   file.set("veth_host", std::string{m_netlinker.get_veth_host_name()});
   file.set("veth_ns", std::string{m_netlinker.get_veth_ns_name()});
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved network state to {}", net_path.string());
+
   return ok{};
 }
 
@@ -201,19 +206,24 @@ fn network_configurator::load() -> error_or<ok>
   unwrap(file.load());
 
   u8 subnet_octet = 0;
+  u8 subnet_prefix = constants::DEFAULT_SUBNET_PREFIX_LEN;
   std::string veth_host;
 
   if (let v = file.find("subnet_octet")) {
     subnet_octet = static_cast<u8>(std::stoul(*v));
   }
+  if (let v = file.find("subnet_prefix")) {
+    subnet_prefix = static_cast<u8>(std::stoul(*v));
+  }
   if (let v = file.find("veth_host")) {
     veth_host = *v;
   }
 
-  m_subnet = subnet{subnet_octet};
+  m_subnet = subnet{subnet_octet, subnet_prefix};
   m_netlinker.set_veth_host_name(veth_host);
 
   trace(verbosity::debug, "Loaded network state from {}", net_path.string());
+
   return ok{};
 }
 

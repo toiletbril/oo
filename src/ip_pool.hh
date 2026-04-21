@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hh"
+#include "constants.hh"
 #include "error.hh"
 #include "ini.hh"
 #include "lock.hh"
@@ -11,14 +12,30 @@ namespace oo {
 
 class linux_namespace;
 
-// A /30 subnet within 10.0.X.0/30 where X is the third_octet.
-struct subnet
+// A subnet within 10.0.X.0/<prefix_len> where X is the third octet. The pool
+// allocates by third octet (always /30-keyed internally); the prefix is
+// chosen per `oo up` invocation and controls the actual netmask on the veth
+// interface. Wider prefixes can overlap across namespaces; that is the
+// user's responsibility.
+class subnet
 {
-  u8 third_octet;
+public:
+  subnet() = default;
+  explicit subnet(u8 third_octet) : m_third_octet(third_octet) {}
+  subnet(u8 third_octet, u8 prefix_len)
+      : m_third_octet(third_octet), m_prefix_len(prefix_len)
+  {}
 
   fn host_ip() const -> std::string;
   fn ns_ip() const -> std::string;
   fn to_string() const -> std::string;
+
+  fn get_third_octet() const -> u8 { return m_third_octet; }
+  fn get_prefix_len() const -> u8 { return m_prefix_len; }
+
+private:
+  u8 m_third_octet{0};
+  u8 m_prefix_len{constants::DEFAULT_SUBNET_PREFIX_LEN};
 };
 
 // Namespace-scoped handle over the shared IP pool file at

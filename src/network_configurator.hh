@@ -37,7 +37,7 @@ public:
   {
     return m_netlinker.get_veth_ns_name();
   }
-  fn get_subnet_octet() const -> u8 { return m_subnet.third_octet; }
+  fn get_subnet_octet() const -> u8 { return m_subnet.get_third_octet(); }
   fn get_netlinker() -> netlinker & { return m_netlinker; }
 
 private:

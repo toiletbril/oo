@@ -38,25 +38,6 @@ and create the runtime directory:
 $ sudo oo init
 ```
 
-## Development
-
-`make test` runs the integration suite. The `MODE` variable controls the build
-type:
-
-| `MODE=` | Description                             |
-|---------|-----------------------------------------|
-| `dbg`   | Debug build (default)                   |
-| `asan`  | Debug build with AddressSanitizer       |
-| `rel`   | Release build                           |
-| `prof`  | Release build with debug symbols        |
-
-```console
-$ make MODE=rel
-$ make MODE=asan test
-```
-
-Run `make fmt` before committing.
-
 ## Usage
 
 Remember that running anything with `--help` prints a more detailed usage:
@@ -81,6 +62,13 @@ overrides `--dns` if both are given:
 ```console
 $ oo up vpn --dns=1.1.1.1 --dns=8.8.8.8 -- openvpn /etc/openvpn/client.conf
 $ oo up vpn --dns-file=/etc/resolv-vpn.conf -- openvpn /etc/openvpn/client.conf
+```
+
+To pick a non-default subnet prefix on the veth interface, use
+`--subnet-prefix` with a value between 16 and 30 (default 30). Wider prefixes
+overlap across namespaces; that is the caller's responsibility:
+```console
+$ oo up vpn --subnet-prefix=24 -- openvpn /etc/openvpn/client.conf
 ```
 
 To run a command inside a running namespace, use `exec`. It exits with the
@@ -122,3 +110,22 @@ Runtime directory layout and permissions:
 ```
 
 Happy tunneling.
+
+## Development
+
+`make test` runs the integration suite. The `MODE` variable controls the build
+type:
+
+| `MODE=` | Description                             |
+|---------|-----------------------------------------|
+| `dbg`   | Debug build (default)                   |
+| `asan`  | Debug build with AddressSanitizer       |
+| `rel`   | Release build                           |
+| `prof`  | Release build with debug symbols        |
+
+```console
+$ make MODE=rel
+$ make MODE=asan test
+```
+
+Run `make fmt` before committing.

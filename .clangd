@@ -1,0 +1,47 @@
+CompileFlags:
+  Add:
+    - -std=c++23
+    - -Wall
+    - -Wextra
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - readability-identifier-naming
+      - bugprone-*
+      - misc-*
+      - modernize-*
+      - performance-*
+      - readability-*
+    Remove:
+      # Project style uses trailing-return-type fn/let macros, not Almost Always
+      # Auto. Keep auto-usage recommendations off.
+      - modernize-use-trailing-return-type
+      - modernize-use-auto
+      # We depend on GNU extensions (defer/statement-exprs); don't nag.
+      - cppcoreguidelines-*
+      - google-runtime-int
+    CheckOptions:
+      # Private/protected class members prefixed m_. Public POD struct
+      # fields keep plain names (e.g. oorunner::credentials, subnet).
+      readability-identifier-naming.PrivateMemberPrefix: m_
+      readability-identifier-naming.ProtectedMemberPrefix: m_
+      readability-identifier-naming.ClassMemberPrefix: m_
+      # Globals and constants in SCREAMING_SNAKE_CASE.
+      readability-identifier-naming.GlobalVariableCase: UPPER_CASE
+      readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+      readability-identifier-naming.GlobalConstantPrefix: ''
+      readability-identifier-naming.GlobalVariablePrefix: ''
+      readability-identifier-naming.ConstexprVariableCase: UPPER_CASE
+      readability-identifier-naming.StaticConstantCase: UPPER_CASE
+      readability-identifier-naming.ClassConstantCase: UPPER_CASE
+      readability-identifier-naming.EnumConstantCase: lower_case
+      # Types and functions keep lower_case to match the project style.
+      readability-identifier-naming.ClassCase: lower_case
+      readability-identifier-naming.StructCase: lower_case
+      readability-identifier-naming.FunctionCase: lower_case
+      readability-identifier-naming.MethodCase: lower_case
+      readability-identifier-naming.VariableCase: lower_case
+      readability-identifier-naming.ParameterCase: lower_case
+      readability-identifier-naming.NamespaceCase: lower_case
+      readability-identifier-naming.MacroDefinitionCase: lower_case
