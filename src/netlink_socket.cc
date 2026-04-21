@@ -71,6 +71,7 @@ fn netlink_socket::open() -> error_or<ok>
   }
 
   trace(verbosity::debug, "Opened netlink socket: {}", m_sock);
+
   return ok{};
 }
 
@@ -96,6 +97,7 @@ fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok>
     return make_error(
         "Failed to send netlink message. Socket may be closed or invalid");
   }
+
   return ok{};
 }
 
@@ -112,7 +114,58 @@ fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize>
     return make_error(
         "Failed to receive netlink message. Socket may be closed or timed out");
   }
+
   return static_cast<usize>(result.get_value());
+}
+
+fn netlink_socket::transact(void *req, usize req_len, std::string_view op)
+    -> error_or<ok>
+{
+  unwrap(send_message(req, req_len));
+
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
+  unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+
+  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
+  if (resp->nlmsg_type == NLMSG_ERROR) {
+    struct nlmsgerr *err =
+        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
+    if (err->error != 0) {
+      return make_error("Netlink error " + std::string{op} + ": " +
+                        linux::get_error_string(-err->error));
+    }
+  }
+
+  return ok{};
+}
+
+fn netlink_socket::transact_loop(void *req, usize req_len, std::string_view op)
+    -> error_or<ok>
+{
+  unwrap(send_message(req, req_len));
+
+  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
+  for (;;) {
+    unwrap(recv_message(resp_buf, sizeof(resp_buf)));
+
+    struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
+
+    if (resp->nlmsg_type == NLMSG_ERROR) {
+      struct nlmsgerr *err =
+          reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
+      if (err->error != 0) {
+        return make_error("Netlink error " + std::string{op} + ": " +
+                          linux::get_error_string(-err->error));
+      }
+      break;
+    }
+
+    if (resp->nlmsg_type == NLMSG_DONE) {
+      break;
+    }
+  }
+
+  return ok{};
 }
 
 } // namespace oo

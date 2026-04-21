@@ -15,29 +15,6 @@
 
 namespace oo {
 
-static fn cleanup_namespace(linux_namespace &ns, network_configurator &netconf)
-    -> void
-{
-  unused(netconf.cleanup());
-
-  ip_pool pool{ns};
-  const subnet s{netconf.get_subnet_octet()};
-  unused(pool.free(s));
-
-  let ns_path_result = ns.get_path();
-  if (!ns_path_result.is_err()) {
-    std::error_code ec;
-    std::filesystem::remove_all(ns_path_result.get_value(), ec);
-    if (ec) {
-      trace(verbosity::error, "Failed to remove namespace directory: {}",
-            ec.message());
-    } else {
-      trace(verbosity::debug, "Removed namespace directory: {}",
-            ns_path_result.get_value().string());
-    }
-  }
-}
-
 fn down(cli::cli &&cli) -> error_or<ok>
 {
   cli.add_use_case("oo down [-options] <namespace>",
@@ -121,7 +98,9 @@ fn down(cli::cli &&cli) -> error_or<ok>
     }
   }
 
-  cleanup_namespace(ns, netconf);
+  unused(ns.reset(netconf));
+  ip_pool pool{ns};
+  unused(pool.free(subnet{netconf.get_subnet_octet()}));
 
   trace(verbosity::info, "Namespace `{}` is down", ns_name);
 

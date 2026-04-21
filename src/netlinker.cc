@@ -17,6 +17,34 @@
 
 namespace oo {
 
+// Request templates. Each function that builds a netlink request produces a
+// fixed-layout struct with nlmsghdr + family-specific header + variable
+// attribute buffer. The sizes below are chosen to fit the largest attribute
+// payload used by that request kind.
+template <usize ExtraBytes>
+struct link_request
+{
+  struct nlmsghdr n;
+  struct ifinfomsg i;
+  char buf[ExtraBytes];
+};
+
+template <usize ExtraBytes>
+struct addr_request
+{
+  struct nlmsghdr n;
+  struct ifaddrmsg a;
+  char buf[ExtraBytes];
+};
+
+template <usize ExtraBytes>
+struct route_request
+{
+  struct nlmsghdr n;
+  struct rtmsg r;
+  char buf[ExtraBytes];
+};
+
 netlinker::netlinker(linux_namespace &ns)
     : m_ns(ns), m_sock(), m_cleaned_up(false)
 {
@@ -44,18 +72,14 @@ fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32>
       unwrap(oo_non_zero(if_nametoindex(ifname.data()),
                          "Interface not found: `" + std::string{ifname} + "`"));
   trace(verbosity::debug, "{}", i);
+
   return i;
 }
 
 fn netlinker::create_veth_pair(std::string_view host_name,
                                std::string_view ns_name) -> error_or<ok>
 {
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifinfomsg i;
-    char buf[1024];
-  } req{};
+  link_request<1024> req{};
 
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
@@ -65,7 +89,6 @@ fn netlinker::create_veth_pair(std::string_view host_name,
   req.i.ifi_family = AF_UNSPEC;
 
   netlink_builder builder(&req.n, sizeof(req));
-
   builder.add_attr_str(IFLA_IFNAME, host_name);
 
   let linkinfo = builder.begin_nested(IFLA_LINKINFO);
@@ -81,31 +104,11 @@ fn netlinker::create_veth_pair(std::string_view host_name,
   builder.end_nested(data);
   builder.end_nested(linkinfo);
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  for (;;) {
-    let len = unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-    struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-
-    if (resp->nlmsg_type == NLMSG_ERROR) {
-      struct nlmsgerr *err =
-          reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-      if (err->error != 0) {
-        return make_error("Netlink error creating veth: " +
-                          linux::get_error_string(-err->error));
-      }
-      break;
-    }
-
-    if (resp->nlmsg_type == NLMSG_DONE) {
-      break;
-    }
-  }
+  unwrap(m_sock.transact_loop(&req, req.n.nlmsg_len, "creating veth"));
 
   trace(verbosity::info, "Created veth pair: `{}` <-> `{}`", host_name,
         ns_name);
+
   return ok{};
 }
 
@@ -114,13 +117,7 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
 {
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifinfomsg i;
-    char buf[256];
-  } req{};
-
+  link_request<256> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
   req.n.nlmsg_type = RTM_NEWLINK;
@@ -133,23 +130,11 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
   std::memcpy(RTA_DATA(rta), &target_pid, sizeof(pid_t));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error moving interface: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "moving interface"));
 
   trace(verbosity::info, "Moved interface `{}` to namespace PID `{}`", ifname,
         target_pid);
+
   return ok{};
 }
 
@@ -160,13 +145,7 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifaddrmsg a;
-    char buf[256];
-  } req{};
-
+  addr_request<256> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL | NLM_F_ACK;
   req.n.nlmsg_type = RTM_NEWADDR;
@@ -196,23 +175,11 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
   std::memcpy(RTA_DATA(rta), &addr, sizeof(struct in_addr));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error adding address: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "adding address"));
 
   trace(verbosity::info, "Added address `{}/{}` to `{}`", ip, prefix_len,
         ifname);
+
   return ok{};
 }
 
@@ -221,13 +188,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
 {
   trace_variables(verbosity::debug, dest_ip, prefix_len, gateway);
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct rtmsg r;
-    char buf[256];
-  } req{};
-
+  route_request<256> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
   req.n.nlmsg_type = RTM_NEWROUTE;
@@ -271,23 +232,11 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   std::memcpy(RTA_DATA(rta), &gw, sizeof(struct in_addr));
   req.n.nlmsg_len += rta->rta_len;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error adding route: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "adding route"));
 
   trace(verbosity::info, "Added route `{}/{}` via `{}`", dest_ip, prefix_len,
         gateway);
+
   return ok{};
 }
 
@@ -297,12 +246,7 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifinfomsg i;
-  } req{};
-
+  link_request<0> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
   req.n.nlmsg_type = RTM_NEWLINK;
@@ -311,20 +255,7 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
   req.i.ifi_flags = IFF_UP;
   req.i.ifi_change = IFF_UP;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error setting link up: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "setting link up"));
 
   trace(verbosity::info, "Set link `{}` up", ifname);
 
@@ -337,12 +268,7 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifinfomsg i;
-  } req{};
-
+  link_request<0> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
   req.n.nlmsg_type = RTM_NEWLINK;
@@ -351,22 +277,10 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
   req.i.ifi_flags = 0;
   req.i.ifi_change = IFF_UP;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error setting link down: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "setting link down"));
 
   trace(verbosity::info, "Set link `{}` down", ifname);
+
   return ok{};
 }
 
@@ -376,32 +290,14 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok>
 
   let ifindex = unwrap(get_ifindex(ifname));
 
-  struct
-  {
-    struct nlmsghdr n;
-    struct ifinfomsg i;
-  } req{};
-
+  link_request<0> req{};
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
   req.n.nlmsg_type = RTM_DELLINK;
   req.i.ifi_family = AF_UNSPEC;
   req.i.ifi_index = ifindex;
 
-  unwrap(m_sock.send_message(&req, req.n.nlmsg_len));
-
-  char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
-  unwrap(m_sock.recv_message(resp_buf, sizeof(resp_buf)));
-
-  struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-  if (resp->nlmsg_type == NLMSG_ERROR) {
-    struct nlmsgerr *err =
-        reinterpret_cast<struct nlmsgerr *>(NLMSG_DATA(resp));
-    if (err->error != 0) {
-      return make_error("Netlink error deleting link: `" +
-                        linux::get_error_string(-err->error) + "`");
-    }
-  }
+  unwrap(m_sock.transact(&req, req.n.nlmsg_len, "deleting link"));
 
   trace(verbosity::info, "Deleted link `{}`", ifname);
 
@@ -429,6 +325,7 @@ fn netlinker::cleanup() -> error_or<ok>
   }
 
   m_cleaned_up = true;
+
   return ok{};
 }
 

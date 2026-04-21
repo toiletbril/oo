@@ -4,49 +4,89 @@
 #include "error.hh"
 #include "linux_namespace.hh"
 
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace oo {
 
-// Manages firewall rules using iptables-legacy or nftables
-// Priority: iptables-legacy first, then nftables fallback
+// Abstract firewall backend. Concrete subclasses implement NAT, forwarding
+// and cleanup via their specific tooling (iptables-legacy, nftables, or a
+// future in-process netlink implementation). The common fork+setuid(0)+exec
+// dance lives in `run_privileged()` so only the rule construction differs.
+class netfilterer_backend
+{
+public:
+  virtual ~netfilterer_backend() = default;
+
+  netfilterer_backend(const netfilterer_backend &) = delete;
+  netfilterer_backend &operator=(const netfilterer_backend &) = delete;
+
+  virtual fn setup_nat(std::string_view host_iface, std::string_view subnet)
+      -> error_or<ok> = 0;
+  virtual fn setup_forward(std::string_view host_iface) -> error_or<ok> = 0;
+  virtual fn cleanup() -> error_or<ok> = 0;
+
+protected:
+  netfilterer_backend(linux_namespace &ns, std::string backend_path)
+      : m_ns(ns), m_backend_path(std::move(backend_path))
+  {}
+
+  // Fork, setuid(0), drop capabilities, execvp the backend binary and
+  // waitpid. argv[0] must be the absolute backend path (not a bare name) to
+  // prevent PATH-hijacking of the setuid child. Called by setup/cleanup.
+  fn run_privileged(const std::vector<std::string> &argv) -> error_or<ok>;
+
+  linux_namespace &m_ns;
+  std::string m_backend_path;
+  std::vector<std::string> m_cleanup_cmds;
+  bool m_cleaned_up{false};
+};
+
+class iptables_legacy_backend : public netfilterer_backend
+{
+public:
+  iptables_legacy_backend(linux_namespace &ns, std::string backend_path)
+      : netfilterer_backend(ns, std::move(backend_path))
+  {}
+
+  fn setup_nat(std::string_view host_iface, std::string_view subnet)
+      -> error_or<ok> override;
+  fn setup_forward(std::string_view host_iface) -> error_or<ok> override;
+  fn cleanup() -> error_or<ok> override;
+};
+
+class nftables_backend : public netfilterer_backend
+{
+public:
+  nftables_backend(linux_namespace &ns, std::string backend_path)
+      : netfilterer_backend(ns, std::move(backend_path))
+  {}
+
+  fn setup_nat(std::string_view host_iface, std::string_view subnet)
+      -> error_or<ok> override;
+  fn setup_forward(std::string_view host_iface) -> error_or<ok> override;
+  fn cleanup() -> error_or<ok> override;
+};
+
+// Facade that selects an available backend at construction and forwards
+// setup/cleanup to it. A future self-routed backend (writing rules via
+// netlink directly) can slot in alongside the existing two.
 class netfilterer
 {
 public:
   netfilterer(linux_namespace &ns);
   ~netfilterer() = default;
 
-  // Setup NAT and forwarding rules for interface
   fn setup_nat(std::string_view host_iface, std::string_view subnet)
       -> error_or<ok>;
-
-  // Setup forwarding rules
   fn setup_forward(std::string_view host_iface) -> error_or<ok>;
-
-  // Remove all tracked rules
   fn cleanup() -> error_or<ok>;
 
 private:
-  enum class backend
-  {
-    iptables_legacy,
-    nftables,
-    unknown
-  };
+  std::unique_ptr<netfilterer_backend> m_impl;
 
-  linux_namespace &m_ns;
-  backend m_backend{backend::unknown};
-  // Absolute path to the firewall binary detected at construction time.
-  // SECURITY: Always use this for execvp, never a bare command name, to prevent
-  // PATH-based hijacking of the setuid(0) child process.
-  std::string m_backend_path{};
-  bool m_cleaned_up{false};
-  std::vector<std::string> m_cleanup_cmds;
-
-  fn detect_backend() -> backend;
-  fn exec_iptables(const std::vector<std::string> &args) -> error_or<ok>;
-  fn exec_nft(const std::vector<std::string> &args) -> error_or<ok>;
+  static fn detect(linux_namespace &ns) -> std::unique_ptr<netfilterer_backend>;
 };
 
 } // namespace oo
