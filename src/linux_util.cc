@@ -59,14 +59,18 @@ fn make_linux_args(const std::vector<std::string> &args)
 
 fn oo_exec(const std::vector<std::string> &args) -> error_or<ok>
 {
-  insist(!args.empty() && !args[0].empty(),
-         "oo_exec requires argv[0] as the program path");
+  if (args.empty() || args[0].empty()) {
+    return make_error("Cannot execute: no command given");
+  }
+
   let os_args = make_linux_args(args);
-  let result = oo_linux_syscall(execvp, os_args[0],
-                                const_cast<char *const *>(os_args.data()));
-  insist(result.is_err());
-  unwrap(result);
-  unreachable();
+
+  let ret = oo_linux_syscall(::execvp, os_args[0],
+                             const_cast<char *const *>(os_args.data()));
+  insist(ret.is_err());
+
+  return make_error("Cannot execute '" + args[0] +
+                    "': " + ret.get_error().get_owned_reason());
 }
 
 fn oo_kill(pid_t pid, int signal) -> error_or<ok>

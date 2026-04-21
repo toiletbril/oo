@@ -34,6 +34,14 @@ fn exec(cli::cli &&cli) -> error_or<ok>
     return make_error("Missing command. Try '--help' for more information.");
   }
 
+  // Capture the caller's cwd before any privilege drop. The command will
+  // chdir here inside the namespace's mount ns before execvp.
+  char cwd_buf[PATH_MAX];
+  if (::getcwd(cwd_buf, sizeof(cwd_buf)) == nullptr) {
+    return make_error("Could not read current working directory.");
+  }
+  const std::string start_cwd{cwd_buf};
+
   // SECURITY: drop to oorunner for the runtime work. `satan::execute`
   // later switches back to the invoking uid right before the final execvp
   // using INVOKING_UID/INVOKING_GID captured here.
@@ -47,7 +55,7 @@ fn exec(cli::cli &&cli) -> error_or<ok>
   linux_namespace ns{ns_name};
   satan s{ns};
 
-  unwrap(s.execute(args));
+  unwrap(s.execute(args, start_cwd));
 
   unreachable();
 }

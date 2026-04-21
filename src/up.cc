@@ -30,6 +30,11 @@ fn up(cli::cli &&cli) -> error_or<ok>
       '\0', "subnet-prefix",
       "Subnet prefix length (16-30). Default: 30. Wider prefixes overlap "
       "across namespaces; that is the caller's responsibility.");
+  let &flag_at_root = cli.add_flag<cli::flag_boolean>(
+      '\0', "at-root",
+      "Start the daemon with cwd=/ instead of the caller's current "
+      "directory. Use when the invoking cwd may disappear or is not "
+      "reachable inside the namespace's mount ns.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -37,6 +42,21 @@ fn up(cli::cli &&cli) -> error_or<ok>
   if (flag_help.is_enabled()) {
     cli.show_help();
     return ok{};
+  }
+
+  // Capture the caller's cwd before any privilege drop or chdir. This is
+  // the cwd the daemon will land in unless --at-root is given. Done here
+  // because anything below may fork/chdir and change the reading.
+  std::string start_cwd;
+  if (flag_at_root.is_enabled()) {
+    start_cwd = "/";
+  } else {
+    char cwd_buf[PATH_MAX];
+    if (::getcwd(cwd_buf, sizeof(cwd_buf)) == nullptr) {
+      return make_error("Could not read current working directory. "
+                        "Pass --at-root to start the daemon at /.");
+    }
+    start_cwd = cwd_buf;
   }
 
   if (args.empty()) {
@@ -169,7 +189,8 @@ fn up(cli::cli &&cli) -> error_or<ok>
   });
 
   satan s{ns};
-  daemon_pid = unwrap(s.spawn_daemon(args, resolv_path, nsswitch_path));
+  daemon_pid =
+      unwrap(s.spawn_daemon(args, start_cwd, resolv_path, nsswitch_path));
   insist(daemon_pid > 0,
          "spawn_daemon returned success without a valid daemon PID");
 

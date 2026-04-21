@@ -23,6 +23,7 @@ uid_t INVOKING_UID = 0;
 gid_t INVOKING_GID = 0;
 
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
+                       std::string_view start_cwd,
                        std::string_view resolv_conf_path,
                        std::string_view nsswitch_conf_path) -> error_or<pid_t>
 {
@@ -30,6 +31,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
          "spawn_daemon requires at least one argv element for execvp");
   insist(!daemonized_argv[0].empty(),
          "daemonized_argv[0] must be the program path");
+  insist(!start_cwd.empty() && start_cwd.front() == '/',
+         "start_cwd must be a non-empty absolute path");
   trace_self(verbosity::debug);
   trace(verbosity::info, "Spawning daemon for namespace '{}'", m_ns.get_name());
   unwrap(m_ns.create_dir());
@@ -40,8 +43,9 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   trace(verbosity::debug, "Forking parent process");
   let child_pid = unwrap(linux::oo_fork());
 
-  let start_daemon = [&daemonized_argv, resolv_conf_path, nsswitch_conf_path](
-                         linux_namespace &ns) -> error_or<pid_t> {
+  let start_daemon =
+      [&daemonized_argv, start_cwd, resolv_conf_path,
+       nsswitch_conf_path](linux_namespace &ns) -> error_or<pid_t> {
     unwrap(ns.unshare());
     trace(verbosity::debug, "Creating new session");
     unwrap(linux::oo_setsid());
@@ -113,6 +117,13 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     // starts with no elevated privileges. The daemon runs inside the
     // network namespace and needs no special capabilities.
     unwrap(caps::drop_for_exec());
+
+    // Land the daemon in the caller's chosen directory. chdir runs as the
+    // invoking user (switch_to_user above), so the check is the caller's
+    // own x-permission on start_cwd, not oorunner's.
+    trace(verbosity::debug, "Changing daemon cwd to {}",
+          std::string{start_cwd});
+    unwrap(linux::oo_chdir(std::string{start_cwd}.c_str()));
 
     trace(verbosity::debug, "Executing daemon: {}", daemonized_argv[0]);
     unwrap(linux::oo_exec(daemonized_argv));
@@ -399,10 +410,13 @@ fn satan::sweep_orphans() -> error_or<ok>
   return ok{};
 }
 
-fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
+fn satan::execute(const std::vector<std::string> &argv,
+                  std::string_view start_cwd) -> error_or<ok>
 {
   insist(!argv.empty(), "satan::execute requires at least one argv element");
   insist(!argv[0].empty(), "argv[0] must be the program path for execvp");
+  insist(!start_cwd.empty() && start_cwd.front() == '/',
+         "start_cwd must be a non-empty absolute path");
   trace_self(verbosity::debug);
 
   if (let r = load(); r.is_err()) {
@@ -432,6 +446,12 @@ fn satan::execute(const std::vector<std::string> &argv) -> error_or<ok>
   // already ran in this process using its file capabilities. The exec'd
   // command runs inside the namespace and needs no elevated privileges.
   unwrap(caps::drop_for_exec());
+
+  // Land the command in the caller's cwd inside the namespace's mount ns.
+  // The path is resolved in the new mount ns; if it is not reachable
+  // there the chdir fails and the user sees the error.
+  trace(verbosity::debug, "Changing cwd to {}", std::string{start_cwd});
+  unwrap(linux::oo_chdir(std::string{start_cwd}.c_str()));
 
   trace(verbosity::info, "Executing: {}", argv[0]);
   unwrap(linux::oo_exec(argv));

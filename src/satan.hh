@@ -29,12 +29,19 @@ class satan
 public:
   satan(linux_namespace &ns) : m_ns(ns) {}
 
-  // Spawn daemon with optional DNS config paths for bind mounting
+  // Spawn daemon with optional DNS config paths for bind mounting.
+  // `start_cwd` is the absolute directory the daemon will chdir into just
+  // before execvp; see comments in spawn_daemon for why this is separate
+  // from the internal ns.get_path() chdir.
   fn spawn_daemon(const std::vector<std::string> &daemonized_argv,
+                  std::string_view start_cwd,
                   std::string_view resolv_conf_path = "",
                   std::string_view nsswitch_conf_path = "") -> error_or<pid_t>;
 
-  fn execute(const std::vector<std::string> &argv) -> error_or<ok>;
+  // `start_cwd` is the absolute directory the command will chdir into
+  // inside the namespace's mount ns, just before execvp.
+  fn execute(const std::vector<std::string> &argv, std::string_view start_cwd)
+      -> error_or<ok>;
 
   fn save() const -> error_or<ok>;
   fn load() -> error_or<ok>;
