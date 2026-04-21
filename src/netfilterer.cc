@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -61,6 +62,13 @@ fn netfilterer_backend::run_privileged(const std::vector<std::string> &argv)
         oo_linux_syscall(setenv, "PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1));
     unused(oo_linux_syscall(setenv, "LANG", "C", 1));
     unused(oo_linux_syscall(setenv, "LC_ALL", "C", 1));
+
+    // SECURITY: close every inherited FD past stderr before exec. Most of
+    // them are already O_CLOEXEC (see oo_pipe, log file opens), but a
+    // future caller may forget, and iptables-legacy as uid 0 is not a
+    // process that should have arbitrary FDs to our state directory.
+    // SYS_close_range is Linux 5.9+; ENOSYS on older kernels is benign.
+    unused(::syscall(SYS_close_range, 3U, ~0U, 0U));
 
     // SECURITY: Use absolute path (argv[0]) that the backend detected at
     // construction time. Never a bare command name to prevent

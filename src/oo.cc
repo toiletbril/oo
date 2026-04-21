@@ -60,6 +60,13 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
 
   cli.reset_context();
 
+  // SECURITY: deny future privilege promotion via execve of any setuid or
+  // file-cap binary reached by a bug. Applies to this process and every
+  // fork/exec descendant. oo's own file caps are already materialized at
+  // process start, so setting this after entry does not break us.
+  unused(oo_linux_syscall(prctl, PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0));
+  unused(oo_linux_syscall(prctl, PR_SET_DUMPABLE, 0, 0, 0, 0));
+
   // clang-format off
   string_switch (*subcommand) {
   string_case("up"):
@@ -96,17 +103,6 @@ fn main(int argc, char **argv) -> int
   insist(argc >= 1);
   argc--;
   argv++;
-
-  // SECURITY: deny future privilege promotion via execve of any setuid or
-  // file-cap binary reached by a bug. Applies to this process and every
-  // fork/exec descendant. oo's own file caps are already materialized at
-  // process start, so setting this after entry does not break us.
-  unused(oo_linux_syscall(prctl, PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0));
-
-  // SECURITY: mark the process non-dumpable while it may hold caps and run
-  // as the oorunner system user. Blocks same-uid ptrace and suppresses core
-  // dumps that would otherwise land in the caller's cwd.
-  unused(oo_linux_syscall(prctl, PR_SET_DUMPABLE, 0, 0, 0, 0));
 
   let cli = oo::cli::cli{argc, argv};
 

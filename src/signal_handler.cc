@@ -14,7 +14,14 @@ cleanup_guard::cleanup_guard()
   struct sigaction sa{};
   sa.sa_handler = handle_signal;
   sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART;
+
+  // SECURITY: intentionally no SA_RESTART. Blocking syscalls interrupted
+  // by a shutdown signal must return EINTR so error_or propagation unwinds
+  // the stack back to this object's RAII destructor. Cleanups then run on
+  // a normal call stack, not from inside the signal handler. The handler
+  // itself is now async-signal-safe: it only sets a sig_atomic_t flag and,
+  // on a second signal, calls _exit to break a wedged main loop.
+  sa.sa_flags = 0;
 
   unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
   unused(oo_linux_syscall(sigaction, SIGTERM, &sa, nullptr));
@@ -63,29 +70,25 @@ fn cleanup_guard::run_cleanups() -> void
 
 fn cleanup_guard::handle_signal(int sig) -> void
 {
-  // SECURITY: This is a POSIX signal handler. Only async-signal-safe operations
-  // are permitted here. Specifically:
-  //   - std::print / trace() are NOT async-signal-safe (omitted intentionally)
-  //   - exit() is NOT async-signal-safe; _exit() is used instead
-  //   - run_cleanups() dispatches std::function objects which are technically
-  //     not guaranteed safe, but in practice the registered callbacks only
-  //     call async-safe syscalls (kill, waitpid, fork, execvp)
+  // SECURITY: async-signal-safe only. The handler does NOT dispatch the
+  // registered std::function cleanups -- those may allocate, lock a
+  // mutex, or touch glibc internals, none of which are safe to call from
+  // a handler that may have interrupted malloc. Instead:
+  //   1. Set a sig_atomic_t flag. Blocking syscalls in the main flow
+  //      return EINTR (SA_RESTART is off), so error_or propagation
+  //      unwinds the stack, and the destructor of this object runs the
+  //      cleanups on a normal call stack.
+  //   2. On a second signal, _exit immediately. A wedged main loop, or
+  //      an operator who wants the process dead NOW, can override the
+  //      graceful path with a second Ctrl-C.
   //
-  // If you add a cleanup function that calls malloc, I/O, or other non-safe
-  // operations, replace this direct-dispatch pattern with a self-pipe or
-  // eventfd to trigger cleanup from the main loop instead.
-  unused(sig);
-
+  // _exit is on the POSIX list of async-signal-safe functions. exit() is
+  // not; using it here would invoke C++ destructors of unrelated globals
+  // from signal context.
   if (s_shutdown_requested) {
-    return;
+    _exit(128 + sig);
   }
   s_shutdown_requested = 1;
-
-  if (s_active_guard) {
-    s_active_guard->run_cleanups();
-  }
-
-  _exit(0);
 }
 
 } // namespace oo

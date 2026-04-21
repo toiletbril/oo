@@ -40,7 +40,7 @@ fn down(cli::cli &&cli) -> error_or<ok>
   if (flag_timeout.is_set()) {
     const std::string timeout_str{flag_timeout.get_value()};
     char *end = nullptr;
-    unsigned long parsed = strtoul(timeout_str.c_str(), &end, 10);
+    u64 parsed = strtoul(timeout_str.c_str(), &end, 10);
     if (end == timeout_str.c_str() || *end != '\0') {
       return make_error("Invalid --timeout value: " + timeout_str);
     }
