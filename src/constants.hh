@@ -20,7 +20,7 @@ inline constexpr std::string OO_RUN_DIR = "/var/run/oo";
 inline constexpr std::string_view OORUNNER_NAME = "oorunner";
 inline constexpr std::string_view OORUNNER_SHELL = "/usr/sbin/nologin";
 inline constexpr std::string_view OORUNNER_GECOS = "oo runtime user";
-inline constexpr std::string_view OORUNNER_HOME = "/nonexistent";
+inline constexpr std::string_view OORUNNER_HOME = "/var/empty";
 
 inline constexpr std::string PROC_SELF_EXE = "/proc/self/exe";
 inline constexpr std::string PROC_NET_ROUTE = "/proc/net/route";

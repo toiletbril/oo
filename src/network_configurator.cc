@@ -13,13 +13,11 @@
 namespace oo {
 
 network_configurator::network_configurator(linux_namespace &ns, subnet s)
-    : m_ns(ns), m_subnet(s), m_netlinker(ns), m_netfilterer(ns)
-{}
+    : m_ns(ns), m_subnet(s), m_netlinker(ns), m_netfilterer(ns) {}
 
 network_configurator::~network_configurator() = default;
 
-fn network_configurator::detect_default_interface() -> error_or<std::string>
-{
+fn network_configurator::detect_default_interface() -> error_or<std::string> {
   std::ifstream route_file(constants::PROC_NET_ROUTE);
   if (!route_file.is_open()) {
     return make_error("Could not open " +
@@ -48,8 +46,7 @@ fn network_configurator::detect_default_interface() -> error_or<std::string>
                     std::string{constants::PROC_NET_ROUTE});
 }
 
-fn network_configurator::enable_ip_forward() -> error_or<ok>
-{
+fn network_configurator::enable_ip_forward() -> error_or<ok> {
   std::ifstream check_file(std::string{constants::PROC_IPV4_FORWARD});
   if (check_file.is_open()) {
     char val;
@@ -79,8 +76,7 @@ fn network_configurator::enable_ip_forward() -> error_or<ok>
   return ok{};
 }
 
-fn network_configurator::initial_setup() -> error_or<ok>
-{
+fn network_configurator::initial_setup() -> error_or<ok> {
   trace_self(verbosity::debug);
   if (m_initial_setup_done) {
     trace(verbosity::debug, "Network already configured");
@@ -122,11 +118,11 @@ fn network_configurator::initial_setup() -> error_or<ok>
   return ok{};
 }
 
-fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
-{
+fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok> {
   trace_variables(verbosity::debug, daemon_pid);
   trace_self(verbosity::debug);
-  if (!m_initial_setup_done) return make_error("Initial setup not done.");
+  if (!m_initial_setup_done)
+    return make_error("Initial setup not done.");
 
   insist(m_initial_setup_done,
          "finish_setup depends on veth pair and NAT rules from initial_setup");
@@ -141,8 +137,12 @@ fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
       unwrap(linux::oo_open(constants::PROC_SELF_NS_NET.data(), O_RDONLY))};
 
   let daemon_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
-  linux::oo_fd daemon_ns_fd{
-      unwrap(linux::oo_open(daemon_ns_path.c_str(), O_RDONLY))};
+  let fd = linux::oo_open(daemon_ns_path.c_str(), O_RDONLY);
+  if (fd.is_err()) {
+    return make_error("Failed to open daemon's network namespace. The daemon "
+                      "might be dying before anything could be done");
+  }
+  linux::oo_fd daemon_ns_fd{fd.take()};
 
   unwrap(linux::oo_setns(daemon_ns_fd, CLONE_NEWNET));
   defer { unused(linux::oo_setns(orig_ns_fd, CLONE_NEWNET)); };
@@ -158,8 +158,7 @@ fn network_configurator::finish_setup(pid_t daemon_pid) -> error_or<ok>
   return ok{};
 }
 
-fn network_configurator::cleanup() -> error_or<ok>
-{
+fn network_configurator::cleanup() -> error_or<ok> {
   trace(verbosity::info, "Cleaning up network for {}", m_subnet.to_string());
 
   unused(m_netfilterer.cleanup());
@@ -169,8 +168,7 @@ fn network_configurator::cleanup() -> error_or<ok>
   return ok{};
 }
 
-fn network_configurator::save() const -> error_or<ok>
-{
+fn network_configurator::save() const -> error_or<ok> {
   let ns_path = unwrap(m_ns.get_path());
   let net_path = ns_path / NET_FILE;
 
@@ -190,8 +188,7 @@ fn network_configurator::save() const -> error_or<ok>
   return ok{};
 }
 
-fn network_configurator::load() -> error_or<ok>
-{
+fn network_configurator::load() -> error_or<ok> {
   let ns_path = unwrap(m_ns.get_path());
   let net_path = ns_path / NET_FILE;
 

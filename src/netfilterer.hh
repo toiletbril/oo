@@ -14,8 +14,7 @@ namespace oo {
 // and cleanup via their specific tooling (iptables-legacy, nftables, or a
 // future in-process netlink implementation). The common fork+setuid(0)+exec
 // dance lives in `run_privileged()` so only the rule construction differs.
-class netfilterer_backend
-{
+class netfilterer_backend {
 public:
   virtual ~netfilterer_backend() = default;
 
@@ -31,8 +30,7 @@ public:
 
 protected:
   netfilterer_backend(linux_namespace &ns, std::string backend_path)
-      : m_ns(ns), m_backend_path(std::move(backend_path))
-  {}
+      : m_ns(ns), m_backend_path(std::move(backend_path)) {}
 
   // Fork, setuid(0), drop capabilities, execvp the backend binary and
   // waitpid. argv[0] must be the absolute backend path (not a bare name) to
@@ -64,12 +62,10 @@ protected:
   static constexpr const char *NETFILTER_LOG_FILE = "netfilter.log";
 };
 
-class iptables_legacy_backend : public netfilterer_backend
-{
+class iptables_legacy_backend : public netfilterer_backend {
 public:
   iptables_legacy_backend(linux_namespace &ns, std::string backend_path)
-      : netfilterer_backend(ns, std::move(backend_path))
-  {}
+      : netfilterer_backend(ns, std::move(backend_path)) {}
 
   [[nodiscard]] fn setup_nat(std::string_view host_iface,
                              std::string_view subnet) -> error_or<ok> override;
@@ -78,12 +74,10 @@ public:
   [[nodiscard]] fn cleanup() -> error_or<ok> override;
 };
 
-class nftables_backend : public netfilterer_backend
-{
+class nftables_backend : public netfilterer_backend {
 public:
   nftables_backend(linux_namespace &ns, std::string backend_path)
-      : netfilterer_backend(ns, std::move(backend_path))
-  {}
+      : netfilterer_backend(ns, std::move(backend_path)) {}
 
   [[nodiscard]] fn setup_nat(std::string_view host_iface,
                              std::string_view subnet) -> error_or<ok> override;
@@ -95,8 +89,7 @@ public:
 // Facade that selects an available backend at construction and forwards
 // setup/cleanup to it. A future self-routed backend (writing rules via
 // netlink directly) can slot in alongside the existing two.
-class netfilterer
-{
+class netfilterer {
 public:
   netfilterer(linux_namespace &ns);
   ~netfilterer() = default;

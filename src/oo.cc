@@ -15,8 +15,7 @@ namespace oo {
 
 verbosity LOGGER_VERBOSITY = verbosity::nothing;
 
-static fn entry(cli::cli &&cli) -> error_or<ok>
-{
+static fn entry(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case(
       "oo [-options] up [-options] <namespace> [--] <daemon command>",
       "Create namespace and start a daemon.");
@@ -59,13 +58,6 @@ static fn entry(cli::cli &&cli) -> error_or<ok>
   trace(verbosity::debug, "Executing {}", *subcommand);
 
   cli.reset_context();
-
-  // SECURITY: deny future privilege promotion via execve of any setuid or
-  // file-cap binary reached by a bug. Applies to this process and every
-  // fork/exec descendant. oo's own file caps are already materialized at
-  // process start, so setting this after entry does not break us.
-  unused(oo_linux_syscall(prctl, PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0));
-  unused(oo_linux_syscall(prctl, PR_SET_DUMPABLE, 0, 0, 0, 0));
 
   // clang-format off
   string_switch (*subcommand) {

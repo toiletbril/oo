@@ -15,8 +15,7 @@ namespace oo {
 // the permitted set across uid changes, but the kernel still clears the
 // effective set on any uid transition for a non-root process. We raise the
 // same caps that the file caps granted.
-static fn raise_effective_caps() -> error_or<ok>
-{
+static fn raise_effective_caps() -> error_or<ok> {
   cap_t caps =
       unwrap(oo_non_zero(cap_get_proc(), "Failed to get process capabilities"));
   insist(caps != nullptr,
@@ -51,8 +50,10 @@ static fn raise_effective_caps() -> error_or<ok>
   for (int cap = 0; cap <= CAP_LAST_CAP; ++cap) {
     cap_flag_value_t permitted = CAP_CLEAR;
     cap_flag_value_t effective = CAP_CLEAR;
-    if (cap_get_flag(check, cap, CAP_PERMITTED, &permitted) != 0) continue;
-    if (permitted != CAP_SET) continue;
+    if (cap_get_flag(check, cap, CAP_PERMITTED, &permitted) != 0)
+      continue;
+    if (permitted != CAP_SET)
+      continue;
     cap_get_flag(check, cap, CAP_EFFECTIVE, &effective);
     insist(effective == CAP_SET,
            "raise_effective_caps left a permitted cap non-effective");
@@ -60,8 +61,7 @@ static fn raise_effective_caps() -> error_or<ok>
   return ok{};
 }
 
-fn passwd::su_oorunner() -> error_or<ok>
-{
+fn passwd::su_oorunner() -> error_or<ok> {
   insist(!m_captured,
          "passwd::su_oorunner must be called at most once per instance");
 
@@ -80,7 +80,7 @@ fn passwd::su_oorunner() -> error_or<ok>
 
   // SECURITY: Clear supplementary groups before narrowing primary gid so the
   // process does not retain group memberships from the invoking user.
-  unwrap(oo_linux_syscall(setgroups, (size_t) 1, &cred.gid));
+  unwrap(oo_linux_syscall(setgroups, (size_t)1, &cred.gid));
   gid_t got_groups[2]{};
   int ngroups = ::getgroups(countof(got_groups), got_groups);
   insist(ngroups == 1 && got_groups[0] == cred.gid,
@@ -109,15 +109,15 @@ fn passwd::su_oorunner() -> error_or<ok>
   return ok{};
 }
 
-fn passwd::su() const -> error_or<ok>
-{
-  // SECURITY: This call runs in forked children right before drop_for_exec
-  // and execvp. No caps are preserved; the child inherits an empty ambient
-  // set and drop_for_exec clears effective/inheritable.
+fn passwd::su() const -> error_or<ok> {
+  // SECURITY: This call runs in forked children right before the cap drop
+  // (drop_all_caps or drop_all_caps_except) and execvp. No caps are
+  // preserved; the child inherits an empty ambient set and the cap drop
+  // clears effective/inheritable.
   insist(m_captured,
          "passwd::su called before su_oorunner captured invoking credentials");
 
-  unwrap(oo_linux_syscall(setgroups, (size_t) 1, &m_invoking_gid));
+  unwrap(oo_linux_syscall(setgroups, (size_t)1, &m_invoking_gid));
   gid_t got_groups[2]{};
   int ngroups = ::getgroups(countof(got_groups), got_groups);
   insist(ngroups == 1 && got_groups[0] == m_invoking_gid,

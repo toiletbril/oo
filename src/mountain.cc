@@ -11,16 +11,15 @@ namespace oo {
 
 mountain::mountain(linux_namespace &ns) : m_ns(ns) {}
 
-fn mountain::make_root_private() -> error_or<ok>
-{
+fn mountain::make_root_private() -> error_or<ok> {
   unwrap(
       oo_linux_syscall(mount, "", "/", nullptr, MS_REC | MS_PRIVATE, nullptr));
   trace(verbosity::debug, "Made root mount private");
   return ok{};
 }
 
-fn mountain::bind_mount(std::string source, std::string target) -> error_or<ok>
-{
+fn mountain::bind_mount(std::string source, std::string target)
+    -> error_or<ok> {
   trace_variables(verbosity::debug, source, target);
   insist(!source.empty() && !target.empty(),
          "bind_mount paths must be non-empty");
@@ -44,8 +43,7 @@ fn mountain::bind_mount(std::string source, std::string target) -> error_or<ok>
   return ok{};
 }
 
-fn mountain::cleanup() -> error_or<ok>
-{
+fn mountain::cleanup() -> error_or<ok> {
   for (let it = m_mounted_paths.rbegin(); it != m_mounted_paths.rend(); ++it) {
     let result = oo_linux_syscall(umount, it->c_str());
     if (result.is_err()) {

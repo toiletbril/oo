@@ -11,8 +11,7 @@ namespace oo {
 
 // Handles bind mount operations for namespace isolation
 // Makes root private and bind mounts DNS config files
-class mountain
-{
+class mountain {
 public:
   mountain(linux_namespace &ns);
   ~mountain() = default;

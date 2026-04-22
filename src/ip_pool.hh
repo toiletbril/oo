@@ -17,8 +17,7 @@ class linux_namespace;
 // chosen per `oo up` invocation and controls the actual netmask on the veth
 // interface. Wider prefixes can overlap across namespaces; that is the
 // user's responsibility.
-class subnet
-{
+class subnet {
 public:
   subnet() = default;
   explicit subnet(u8 third_octet) : m_third_octet(third_octet) {}
@@ -40,8 +39,7 @@ private:
 // /var/run/oo/ip-pool.ini. The lock is acquired on construction and held
 // for the lifetime of the object; entries live in an ini_file member and
 // are flushed on destruction.
-class ip_pool
-{
+class ip_pool {
 public:
   explicit ip_pool(linux_namespace &ns);
   ~ip_pool() = default;

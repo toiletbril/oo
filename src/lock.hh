@@ -9,8 +9,7 @@ namespace oo {
 
 // RAII wrapper around an fcntl F_WRLCK on a dedicated lock file.
 // Acquire is blocking; release happens on destruction. Move-only.
-class file_lock
-{
+class file_lock {
 public:
   explicit file_lock(std::filesystem::path path);
   ~file_lock();

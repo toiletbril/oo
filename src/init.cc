@@ -14,8 +14,7 @@
 
 namespace oo {
 
-fn init(cli::cli &&cli) -> error_or<ok>
-{
+fn init(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case("oo init [-options]",
                    "Set file capabilities on the binary (requires root).");
 
@@ -85,9 +84,8 @@ fn init(cli::cli &&cli) -> error_or<ok>
   // model can actually read and write them. Children are *not* chmod'ed
   // here; `oo up` will set correct perms when it recreates them, and the
   // user can always `oo down` and `oo up` again to resync a single ns.
-  for (const let &entry :
-       std::filesystem::recursive_directory_iterator(constants::OO_RUN_DIR, ec))
-  {
+  for (const let &entry : std::filesystem::recursive_directory_iterator(
+           constants::OO_RUN_DIR, ec)) {
     if (ec) {
       return make_error("Failed to enumerate " +
                         std::string{constants::OO_RUN_DIR} + ": " +

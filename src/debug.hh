@@ -9,25 +9,22 @@
 
 namespace oo {
 
-enum class verbosity : u8
-{
-  nothing,
-  error,
-  warn,
-  info,
-  debug,
-  all
-};
+enum class verbosity : u8 { nothing, error, warn, info, debug, all };
 
-forceinline constexpr const char *verbosity_to_string(verbosity v)
-{
+forceinline constexpr const char *verbosity_to_string(verbosity v) {
   switch (v) {
-  case verbosity::error: return "ERR";
-  case verbosity::info: return "INF";
-  case verbosity::warn: return "WRN";
-  case verbosity::debug: return "DBG";
-  case verbosity::all: return "ALL";
-  default: return "???";
+  case verbosity::error:
+    return "ERR";
+  case verbosity::info:
+    return "INF";
+  case verbosity::warn:
+    return "WRN";
+  case verbosity::debug:
+    return "DBG";
+  case verbosity::all:
+    return "ALL";
+  default:
+    return "???";
   }
 }
 
@@ -50,8 +47,7 @@ namespace oo::debug {
 #if defined __clang__
 #include <cstdarg>
 #include <string>
-used static void t__strprintf(::std::string &s, const char *fmt, ...)
-{
+used static void t__strprintf(::std::string &s, const char *fmt, ...) {
   va_list a;
   va_start(a, fmt);
   va_list ac;
@@ -63,9 +59,7 @@ used static void t__strprintf(::std::string &s, const char *fmt, ...)
   delete[] b;
 }
 
-template <class T>
-::std::string t__string_from_struct(const T &x)
-{
+template <class T>::std::string t__string_from_struct(const T &x) {
   ::std::string s{};
   __builtin_dump_struct(&x, t__strprintf, s);
   return s;
@@ -77,7 +71,7 @@ template <class T>
 #define string_to_struct(...) std::string{"<not supported>"}
 #endif
 
-#define t__va_are_empty(...) (sizeof((char[]) {#__VA_ARGS__}) == 1)
+#define t__va_are_empty(...) (sizeof((char[]){#__VA_ARGS__}) == 1)
 
 /* True if __VA_ARGS__ passed as an argument is empty. */
 #define va_are_empty(...) t__va_are_empty(__VA_ARGS__)
@@ -113,8 +107,7 @@ template <class T>
 
 template <typename T>
 forceinline auto t__format_arg(const char *name, const T &value)
-    -> ::std::string
-{
+    -> ::std::string {
   if constexpr (requires { ::std::format("{}", value); }) {
     return ::std::format("{} = {}", name, value);
   } else {
@@ -123,8 +116,7 @@ forceinline auto t__format_arg(const char *name, const T &value)
 }
 
 template <typename T>
-forceinline auto t__format_arg(const char *name, T *value) -> ::std::string
-{
+forceinline auto t__format_arg(const char *name, T *value) -> ::std::string {
   if (value == nullptr) {
     return ::std::format("{} = nullptr", name);
   }
@@ -142,8 +134,7 @@ forceinline auto t__format_arg(const char *name, T *value) -> ::std::string
 
 template <typename... Args>
 forceinline auto t__format_args_impl(const char *names, Args &&...args)
-    -> ::std::string
-{
+    -> ::std::string {
   ::std::string result;
   ::std::string_view names_view{names};
   auto format_one = [&](auto &&arg, bool is_last) {
@@ -160,7 +151,8 @@ forceinline auto t__format_args_impl(const char *names, Args &&...args)
       arg_name.remove_suffix(1);
 
     result += t__format_arg(::std::string{arg_name}.c_str(), arg);
-    if (!is_last) result += ", ";
+    if (!is_last)
+      result += ", ";
 
     if (comma_pos != ::std::string_view::npos)
       names_view = names_view.substr(comma_pos + 1);
@@ -191,7 +183,7 @@ forceinline auto t__format_args_impl(const char *names, Args &&...args)
     }                                                                          \
   } while (0)
 #else
-#define trace_self(v) ((void) 0)
+#define trace_self(v) ((void)0)
 #endif
 
 } // namespace oo::debug

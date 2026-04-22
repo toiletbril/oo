@@ -9,8 +9,7 @@
 
 namespace oo {
 
-fn ensure_runtime_dir_exists() -> error_or<ok>
-{
+fn ensure_runtime_dir_exists() -> error_or<ok> {
   std::error_code ec;
   let e = std::filesystem::exists(constants::OO_RUN_DIR, ec);
   unwrap(oo_error_code(ec, "Couldn't check if runtime directory exists"));

@@ -12,8 +12,7 @@
 
 namespace oo {
 
-netlink_socket::netlink_socket()
-{
+netlink_socket::netlink_socket() {
   let result = open();
   if (result.is_err()) {
     m_init_error = result.get_error().get_owned_reason();
@@ -23,8 +22,7 @@ netlink_socket::netlink_socket()
 
 netlink_socket::~netlink_socket() { close(); }
 
-fn netlink_socket::open() -> error_or<ok>
-{
+fn netlink_socket::open() -> error_or<ok> {
   let cap_result = linux::raise_capability(CAP_NET_ADMIN);
   if (cap_result.is_err()) {
     return make_error("Failed to raise CAP_NET_ADMIN capability. Try running "
@@ -75,8 +73,7 @@ fn netlink_socket::open() -> error_or<ok>
   return ok{};
 }
 
-fn netlink_socket::close() -> void
-{
+fn netlink_socket::close() -> void {
   if (m_sock >= 0) {
     unused(linux::oo_close(m_sock));
     trace(verbosity::debug, "Closed netlink socket");
@@ -84,8 +81,7 @@ fn netlink_socket::close() -> void
   }
 }
 
-fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok>
-{
+fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok> {
   trace_variables(verbosity::all, data, len);
 
   if (m_sock < 0) {
@@ -101,8 +97,7 @@ fn netlink_socket::send_message(const void *data, usize len) -> error_or<ok>
   return ok{};
 }
 
-fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize>
-{
+fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize> {
   trace_variables(verbosity::all, buf, buf_size);
 
   if (m_sock < 0) {
@@ -123,8 +118,7 @@ fn netlink_socket::recv_message(void *buf, usize buf_size) -> error_or<usize>
 // would otherwise lead to an out-of-bounds read of the stack buffer. The
 // length argument must be an lvalue because NLMSG_NEXT mutates it.
 fn netlink_socket::transact(void *req, usize req_len, std::string_view op)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   unwrap(send_message(req, req_len));
 
   char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
@@ -132,8 +126,7 @@ fn netlink_socket::transact(void *req, usize req_len, std::string_view op)
   unsigned int len = static_cast<unsigned int>(recv_len);
 
   for (struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-       NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len))
-  {
+       NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len)) {
     if (resp->nlmsg_type == NLMSG_ERROR) {
       if (resp->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
         return make_error("Truncated netlink error for " + std::string{op});
@@ -151,8 +144,7 @@ fn netlink_socket::transact(void *req, usize req_len, std::string_view op)
 }
 
 fn netlink_socket::transact_loop(void *req, usize req_len, std::string_view op)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   unwrap(send_message(req, req_len));
 
   char resp_buf[constants::NETLINK_RESP_BUF_SIZE];
@@ -162,8 +154,7 @@ fn netlink_socket::transact_loop(void *req, usize req_len, std::string_view op)
     bool terminal = false;
 
     for (struct nlmsghdr *resp = reinterpret_cast<struct nlmsghdr *>(resp_buf);
-         NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len))
-    {
+         NLMSG_OK(resp, len); resp = NLMSG_NEXT(resp, len)) {
       if (resp->nlmsg_type == NLMSG_ERROR) {
         if (resp->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
           return make_error("Truncated netlink error for " + std::string{op});
@@ -184,7 +175,8 @@ fn netlink_socket::transact_loop(void *req, usize req_len, std::string_view op)
       }
     }
 
-    if (terminal) break;
+    if (terminal)
+      break;
   }
 
   return ok{};

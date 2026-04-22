@@ -3,12 +3,15 @@
 #include "caps.hh"
 #include "constants.hh"
 #include "debug.hh"
+#include "error.hh"
 #include "linux_util.hh"
 
 #include <cstdlib>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -16,65 +19,38 @@
 namespace oo {
 
 fn netfilterer_backend::run_privileged(const std::vector<std::string> &argv)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   insist(!argv.empty() && !argv[0].empty(),
          "run_privileged requires argv[0] as the absolute backend path");
 
   pid_t pid = unwrap(linux::oo_fork());
 
   if (pid == 0) {
-    let su = linux::oo_setuid(0);
-    if (su.is_err()) {
-      trace(verbosity::error, "setuid(0) failed: {}",
-            su.get_error().get_reason());
-      exit(1);
+    let do_exec = [](const std::vector<std::string> &argv) -> error_or<ok> {
+      // SECURITY: Use absolute path (argv[0]) that the backend detected at
+      // construction time. Never a bare command name to prevent
+      // PATH-hijacking of this setuid(0) child process.
+      insist(std::filesystem::path(argv[0]).is_absolute());
+
+      // SECURITY: close every inherited FD past stderr before exec. Most of
+      // them are already O_CLOEXEC (see oo_pipe, log file opens), but a
+      // future caller may forget, and iptables-legacy as uid 0 is not a
+      // process that should have arbitrary FDs to our state directory.
+      // SYS_close_range is Linux 5.9+; ENOSYS on older kernels is benign.
+      unused(::syscall(SYS_close_range, 3U, ~0U, 0U));
+
+      unwrap(linux::oo_setuid(0));
+
+      unwrap(linux::oo_exec(argv));
+
+      unreachable();
+    };
+
+    if (let ret = do_exec(argv); ret.is_err()) {
+      trace(verbosity::error, "run_privileged child failed: {}",
+            ret.get_error().get_reason());
+      _exit(1);
     }
-    insist(::getuid() == 0 && ::geteuid() == 0,
-           "setuid(0) returned success but uid is not root");
-    trace(verbosity::debug, "setuid(0) ok, executing {}", argv[0]);
-
-    // SECURITY: Drop all inherited capabilities before exec. uid=0 is
-    // sufficient for iptables/nftables to open their locks and run their
-    // root checks; no DAC-override or any other capability is needed in
-    // the child. The parent holds CAP_SETUID which authorized the
-    // setuid(0) above. A failure here MUST be fatal: the child is already
-    // uid 0 with the full permitted set, and an exec of iptables-legacy
-    // while still holding caps would hand those caps to a binary that
-    // inherits the attacker's environment.
-    if (let r = caps::drop_for_exec(); r.is_err()) {
-      trace(verbosity::error, "drop_for_exec failed in uid-0 child: {}",
-            r.get_error().get_reason());
-      exit(1);
-    }
-
-    // SECURITY: wipe every inherited environment variable before exec as
-    // uid 0. The parent env is attacker-controlled; LD_PRELOAD,
-    // LD_LIBRARY_PATH, LD_AUDIT, LOCPATH, or IFS in a uid-0 child would
-    // let the invoker inject code into the iptables-legacy process. A
-    // minimal allowlist is then set so the binary can still locate its
-    // own shared objects under a vanilla loader policy.
-    if (::clearenv() != 0) {
-      trace(verbosity::error, "clearenv failed in uid-0 child");
-      exit(1);
-    }
-    unused(
-        oo_linux_syscall(setenv, "PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1));
-    unused(oo_linux_syscall(setenv, "LANG", "C", 1));
-    unused(oo_linux_syscall(setenv, "LC_ALL", "C", 1));
-
-    // SECURITY: close every inherited FD past stderr before exec. Most of
-    // them are already O_CLOEXEC (see oo_pipe, log file opens), but a
-    // future caller may forget, and iptables-legacy as uid 0 is not a
-    // process that should have arbitrary FDs to our state directory.
-    // SYS_close_range is Linux 5.9+; ENOSYS on older kernels is benign.
-    unused(::syscall(SYS_close_range, 3U, ~0U, 0U));
-
-    // SECURITY: Use absolute path (argv[0]) that the backend detected at
-    // construction time. Never a bare command name to prevent
-    // PATH-hijacking of this setuid(0) child process.
-    unused(linux::oo_exec(argv));
-    exit(1);
   }
 
   int status;
@@ -88,8 +64,7 @@ fn netfilterer_backend::run_privileged(const std::vector<std::string> &argv)
 }
 
 fn netfilterer_backend::persist_cleanup(const std::vector<std::string> &argv)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   insist(!argv.empty(), "persist_cleanup requires a non-empty argv");
 
   let ns_path = unwrap(m_ns.get_path());
@@ -106,7 +81,8 @@ fn netfilterer_backend::persist_cleanup(const std::vector<std::string> &argv)
     return make_error("Could not open netfilter log " + log_path.string());
   }
   for (usize i = 0; i < argv.size(); ++i) {
-    if (i != 0) f << ' ';
+    if (i != 0)
+      f << ' ';
     f << argv[i];
   }
   f << '\n';
@@ -116,12 +92,12 @@ fn netfilterer_backend::persist_cleanup(const std::vector<std::string> &argv)
   }
 
   m_cleanup_cmds.push_back(argv);
+
   return ok{};
 }
 
 fn netfilterer_backend::load_persisted_cleanups()
-    -> error_or<std::vector<std::vector<std::string>>>
-{
+    -> error_or<std::vector<std::vector<std::string>>> {
   let ns_path = unwrap(m_ns.get_path());
   let log_path = ns_path / NETFILTER_LOG_FILE;
 
@@ -138,22 +114,24 @@ fn netfilterer_backend::load_persisted_cleanups()
 
   std::string line;
   while (std::getline(f, line)) {
-    if (line.empty()) continue;
+    if (line.empty())
+      continue;
     std::vector<std::string> argv;
     std::istringstream iss(line);
     std::string token;
     while (iss >> token)
       argv.push_back(std::move(token));
-    if (!argv.empty()) out.push_back(std::move(argv));
+    if (!argv.empty())
+      out.push_back(std::move(argv));
   }
 
   return out;
 }
 
-fn netfilterer_backend::remove_persisted_cleanups() -> void
-{
+fn netfilterer_backend::remove_persisted_cleanups() -> void {
   let ns_path_r = m_ns.get_path();
-  if (ns_path_r.is_err()) return;
+  if (ns_path_r.is_err())
+    return;
   let log_path = ns_path_r.get_value() / NETFILTER_LOG_FILE;
   std::error_code ec;
   std::filesystem::remove(log_path, ec);
@@ -164,8 +142,7 @@ fn netfilterer_backend::remove_persisted_cleanups() -> void
 }
 
 fn iptables_legacy_backend::setup_nat(std::string_view host_iface,
-                                      std::string_view subnet) -> error_or<ok>
-{
+                                      std::string_view subnet) -> error_or<ok> {
   trace_variables(verbosity::all, host_iface, subnet);
   const std::string subnet_str{subnet};
   const std::string iface_str{host_iface};
@@ -188,8 +165,7 @@ fn iptables_legacy_backend::setup_nat(std::string_view host_iface,
 }
 
 fn iptables_legacy_backend::setup_forward(std::string_view host_iface)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   trace_variables(verbosity::all, host_iface);
   const std::string iface_str{host_iface};
 
@@ -208,8 +184,7 @@ fn iptables_legacy_backend::setup_forward(std::string_view host_iface)
   return ok{};
 }
 
-fn iptables_legacy_backend::cleanup() -> error_or<ok>
-{
+fn iptables_legacy_backend::cleanup() -> error_or<ok> {
   if (m_cleaned_up) {
     return ok{};
   }
@@ -228,7 +203,8 @@ fn iptables_legacy_backend::cleanup() -> error_or<ok>
   // built here from validated interface names and subnet strings. argv[0]
   // is always the absolute backend path.
   for (const let &argv : m_cleanup_cmds) {
-    if (argv.empty()) continue;
+    if (argv.empty())
+      continue;
     if (let r = run_privileged(argv); r.is_err()) {
       trace(verbosity::error, "Cleanup command failed: {}",
             r.get_error().get_reason());
@@ -244,8 +220,7 @@ fn iptables_legacy_backend::cleanup() -> error_or<ok>
 }
 
 fn nftables_backend::setup_nat(std::string_view host_iface,
-                               std::string_view subnet) -> error_or<ok>
-{
+                               std::string_view subnet) -> error_or<ok> {
   trace_variables(verbosity::all, host_iface, subnet);
   const std::string subnet_str{subnet};
   const std::string iface_str{host_iface};
@@ -261,8 +236,8 @@ fn nftables_backend::setup_nat(std::string_view host_iface,
   return ok{};
 }
 
-fn nftables_backend::setup_forward(std::string_view host_iface) -> error_or<ok>
-{
+fn nftables_backend::setup_forward(std::string_view host_iface)
+    -> error_or<ok> {
   trace_variables(verbosity::all, host_iface);
   const std::string iface_str{host_iface};
 
@@ -276,8 +251,7 @@ fn nftables_backend::setup_forward(std::string_view host_iface) -> error_or<ok>
   return ok{};
 }
 
-fn nftables_backend::cleanup() -> error_or<ok>
-{
+fn nftables_backend::cleanup() -> error_or<ok> {
   if (m_cleaned_up) {
     return ok{};
   }
@@ -296,8 +270,7 @@ fn nftables_backend::cleanup() -> error_or<ok>
 }
 
 fn netfilterer::detect(linux_namespace &ns)
-    -> std::unique_ptr<netfilterer_backend>
-{
+    -> std::unique_ptr<netfilterer_backend> {
   // SECURITY: Store the absolute path so all exec calls use it directly.
   // Never use a bare command name with execvp; a compromised PATH combined
   // with a setuid(0) child would allow arbitrary root code execution.
@@ -320,8 +293,7 @@ fn netfilterer::detect(linux_namespace &ns)
   return nullptr;
 }
 
-netfilterer::netfilterer(linux_namespace &ns) : m_impl(detect(ns))
-{
+netfilterer::netfilterer(linux_namespace &ns) : m_impl(detect(ns)) {
   trace(verbosity::info, "Using firewall backend: {}",
         m_impl ? (dynamic_cast<iptables_legacy_backend *>(m_impl.get())
                       ? "iptables-legacy"
@@ -330,21 +302,21 @@ netfilterer::netfilterer(linux_namespace &ns) : m_impl(detect(ns))
 }
 
 fn netfilterer::setup_nat(std::string_view host_iface, std::string_view subnet)
-    -> error_or<ok>
-{
-  if (!m_impl) return make_error("No firewall backend available");
+    -> error_or<ok> {
+  if (!m_impl)
+    return make_error("No firewall backend available");
   return m_impl->setup_nat(host_iface, subnet);
 }
 
-fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok>
-{
-  if (!m_impl) return make_error("No firewall backend available");
+fn netfilterer::setup_forward(std::string_view host_iface) -> error_or<ok> {
+  if (!m_impl)
+    return make_error("No firewall backend available");
   return m_impl->setup_forward(host_iface);
 }
 
-fn netfilterer::cleanup() -> error_or<ok>
-{
-  if (!m_impl) return ok{};
+fn netfilterer::cleanup() -> error_or<ok> {
+  if (!m_impl)
+    return ok{};
   return m_impl->cleanup();
 }
 

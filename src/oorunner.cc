@@ -18,8 +18,55 @@ namespace oo {
 
 namespace oorunner {
 
-fn lookup() -> error_or<credentials>
-{
+namespace {
+
+// RAII guards around the libc NSS iterator and the /etc/.pwd.lock advisory
+// lock. Pair a set*/end* (or lck/ulck) call to the enclosing scope so they
+// can never drift across early returns. Non-copyable, non-movable so the
+// destructor fires exactly once at scope exit.
+
+class nss_pwent_scope {
+public:
+  nss_pwent_scope() { ::setpwent(); }
+  ~nss_pwent_scope() { ::endpwent(); }
+  nss_pwent_scope(const nss_pwent_scope &) = delete;
+  nss_pwent_scope &operator=(const nss_pwent_scope &) = delete;
+  nss_pwent_scope(nss_pwent_scope &&) = delete;
+  nss_pwent_scope &operator=(nss_pwent_scope &&) = delete;
+};
+
+class nss_grent_scope {
+public:
+  nss_grent_scope() { ::setgrent(); }
+  ~nss_grent_scope() { ::endgrent(); }
+  nss_grent_scope(const nss_grent_scope &) = delete;
+  nss_grent_scope &operator=(const nss_grent_scope &) = delete;
+  nss_grent_scope(nss_grent_scope &&) = delete;
+  nss_grent_scope &operator=(nss_grent_scope &&) = delete;
+};
+
+// SECURITY: Serialize account edits against useradd/groupadd/passwd via
+// the advisory lock on /etc/.pwd.lock. Best-effort: older systems ignore
+// this, but glibc always provides it. Ctor logs the acquire failure and
+// continues (the old code behaved this way); dtor always unlocks.
+class pwd_lock_scope {
+public:
+  pwd_lock_scope() {
+    if (::lckpwdf() != 0) {
+      trace(verbosity::error, "lckpwdf() failed: {}",
+            linux::get_errno_string());
+    }
+  }
+  ~pwd_lock_scope() { ::ulckpwdf(); }
+  pwd_lock_scope(const pwd_lock_scope &) = delete;
+  pwd_lock_scope &operator=(const pwd_lock_scope &) = delete;
+  pwd_lock_scope(pwd_lock_scope &&) = delete;
+  pwd_lock_scope &operator=(pwd_lock_scope &&) = delete;
+};
+
+} // namespace
+
+fn lookup() -> error_or<credentials> {
   errno = 0;
   struct passwd *pw = ::getpwnam(std::string{constants::OORUNNER_NAME}.c_str());
   if (pw == nullptr) {
@@ -38,38 +85,39 @@ fn lookup() -> error_or<credentials>
 // down (999..100) so the chosen uid is least likely to collide with a
 // future distro-managed system account, which distros conventionally
 // allocate upward from SYS_UID_MIN.
-static fn pick_system_uid() -> error_or<uid_t>
-{
+static fn pick_system_uid() -> error_or<uid_t> {
   constexpr uid_t SYSTEM_UID_MIN = 100;
   constexpr uid_t SYSTEM_UID_MAX = 999;
   constexpr usize RANGE_SIZE = SYSTEM_UID_MAX - SYSTEM_UID_MIN + 1;
 
   std::array<bool, RANGE_SIZE> taken{};
 
-  ::setpwent();
-  errno = 0;
-  while (struct passwd *pw = ::getpwent()) {
-    if (pw->pw_uid >= SYSTEM_UID_MIN && pw->pw_uid <= SYSTEM_UID_MAX) {
-      taken[pw->pw_uid - SYSTEM_UID_MIN] = true;
-    }
+  {
+    nss_pwent_scope pwent;
     errno = 0;
-  }
-  ::endpwent();
-  if (errno != 0) {
-    return make_error("`getpwent` failed: " + linux::get_errno_string());
+    while (struct passwd *pw = ::getpwent()) {
+      if (pw->pw_uid >= SYSTEM_UID_MIN && pw->pw_uid <= SYSTEM_UID_MAX) {
+        taken[pw->pw_uid - SYSTEM_UID_MIN] = true;
+      }
+      errno = 0;
+    }
+    if (errno != 0) {
+      return make_error("`getpwent` failed: " + linux::get_errno_string());
+    }
   }
 
-  ::setgrent();
-  errno = 0;
-  while (struct group *gr = ::getgrent()) {
-    if (gr->gr_gid >= SYSTEM_UID_MIN && gr->gr_gid <= SYSTEM_UID_MAX) {
-      taken[gr->gr_gid - SYSTEM_UID_MIN] = true;
-    }
+  {
+    nss_grent_scope grent;
     errno = 0;
-  }
-  ::endgrent();
-  if (errno != 0) {
-    return make_error("`getgrent` failed: " + linux::get_errno_string());
+    while (struct group *gr = ::getgrent()) {
+      if (gr->gr_gid >= SYSTEM_UID_MIN && gr->gr_gid <= SYSTEM_UID_MAX) {
+        taken[gr->gr_gid - SYSTEM_UID_MIN] = true;
+      }
+      errno = 0;
+    }
+    if (errno != 0) {
+      return make_error("`getgrent` failed: " + linux::get_errno_string());
+    }
   }
 
   for (usize i = RANGE_SIZE; i-- > 0;) {
@@ -82,8 +130,7 @@ static fn pick_system_uid() -> error_or<uid_t>
       "Could not pick a system uid: range [100, 999] is exhausted.");
 }
 
-static fn append_group(uid_t gid) -> error_or<ok>
-{
+static fn append_group(uid_t gid) -> error_or<ok> {
   FILE *f = ::fopen("/etc/group", "a");
   if (f == nullptr) {
     return make_error(std::string{"Failed to open /etc/group: "} +
@@ -107,8 +154,7 @@ static fn append_group(uid_t gid) -> error_or<ok>
   return ok{};
 }
 
-static fn append_passwd(uid_t uid, gid_t gid) -> error_or<ok>
-{
+static fn append_passwd(uid_t uid, gid_t gid) -> error_or<ok> {
   FILE *f = ::fopen("/etc/passwd", "a");
   if (f == nullptr) {
     return make_error(std::string{"Failed to open /etc/passwd: "} +
@@ -137,8 +183,7 @@ static fn append_passwd(uid_t uid, gid_t gid) -> error_or<ok>
   return ok{};
 }
 
-static fn append_shadow() -> error_or<ok>
-{
+static fn append_shadow() -> error_or<ok> {
   std::error_code ec;
   if (!std::filesystem::exists("/etc/shadow", ec)) {
     trace(verbosity::info, "/etc/shadow not present; skipping shadow entry");
@@ -172,8 +217,7 @@ static fn append_shadow() -> error_or<ok>
   return ok{};
 }
 
-fn ensure_exists() -> error_or<ok>
-{
+fn ensure_exists() -> error_or<ok> {
   errno = 0;
   if (::getpwnam(std::string{constants::OORUNNER_NAME}.c_str()) != nullptr) {
     trace(verbosity::info, "'{}' account already exists",
@@ -181,8 +225,7 @@ fn ensure_exists() -> error_or<ok>
     return ok{};
   }
   if (errno != 0 && errno != ENOENT && errno != ESRCH && errno != EBADF &&
-      errno != EPERM)
-  {
+      errno != EPERM) {
     return make_error("`getpwnam(oorunner)` failed: " +
                       linux::get_errno_string());
   }
@@ -192,17 +235,30 @@ fn ensure_exists() -> error_or<ok>
          "pick_system_uid must return a value in the system uid range");
   let gid = static_cast<gid_t>(uid);
 
-  // SECURITY: Serialize account edits against useradd/groupadd/passwd via
-  // the advisory lock on /etc/.pwd.lock. Best-effort: older systems ignore
-  // this, but glibc always provides it.
-  if (::lckpwdf() != 0) {
-    trace(verbosity::error, "lckpwdf() failed: {}", linux::get_errno_string());
+  {
+    pwd_lock_scope pwd_lock;
+    unwrap(append_group(gid));
+    unwrap(append_passwd(uid, gid));
+    unwrap(append_shadow());
   }
-  defer { ::ulckpwdf(); };
 
-  unwrap(append_group(gid));
-  unwrap(append_passwd(uid, gid));
-  unwrap(append_shadow());
+  // SECURITY: drop any cached libc NSS state from the earlier
+  // pick_system_uid() scan and the initial getpwnam(oorunner) negative
+  // lookup. Without this, the next getpwnam() in this same process (from
+  // lookup() in init) returns the stale "not found" and misreports the
+  // freshly-created account as missing. Re-check the name resolves before
+  // returning so the failure mode is diagnosable rather than surfacing
+  // later as "account does not exist".
+  ::endpwent();
+  ::endgrent();
+
+  errno = 0;
+  if (::getpwnam(std::string{constants::OORUNNER_NAME}.c_str()) == nullptr) {
+    return make_error(
+        "Created '" + std::string{constants::OORUNNER_NAME} +
+        "' but getpwnam still does not resolve it after NSS refresh" +
+        (errno != 0 ? ": " + linux::get_errno_string() : std::string{}));
+  }
 
   trace(verbosity::info, "Created '{}' system account (uid={}, gid={})",
         constants::OORUNNER_NAME, uid, gid);

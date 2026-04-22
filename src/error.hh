@@ -7,10 +7,8 @@
 
 namespace oo {
 
-struct [[nodiscard]] error
-{
-  enum code : i8
-  {
+struct [[nodiscard]] error {
+  enum code : i8 {
     unknown = -1,
   };
 
@@ -19,12 +17,10 @@ struct [[nodiscard]] error
   operator std::string_view() const noexcept { return get_reason(); }
 
   [[nodiscard]] fn get_code() noexcept -> code { return m_code; };
-  [[nodiscard]] fn get_reason() const noexcept -> std::string_view
-  {
+  [[nodiscard]] fn get_reason() const noexcept -> std::string_view {
     return m_reason;
   }
-  [[nodiscard]] fn get_owned_reason() const noexcept -> std::string
-  {
+  [[nodiscard]] fn get_owned_reason() const noexcept -> std::string {
     return m_reason;
   }
 
@@ -33,11 +29,9 @@ private:
   std::string m_reason;
 };
 
-struct ok
-{};
+struct ok {};
 
-constexpr fn strip_path_prefix(const char *path) -> const char *
-{
+constexpr fn strip_path_prefix(const char *path) -> const char * {
   if (path[0] == '.' && path[1] == '/') {
     return path + 2;
   }
@@ -45,15 +39,12 @@ constexpr fn strip_path_prefix(const char *path) -> const char *
 }
 
 #define make_error(msg)                                                        \
-  oo::error                                                                    \
-  {                                                                            \
+  oo::error {                                                                  \
     ::std::format("{} ({}:{})", msg, oo::strip_path_prefix(__FILE__),          \
                   __LINE__)                                                    \
   }
 
-template <typename V>
-struct [[nodiscard]] error_or
-{
+template <typename V> struct [[nodiscard]] error_or {
   error_or() : m_data() {}
 
   error_or(V v) : m_data(std::move(v)) {}
@@ -62,16 +53,14 @@ struct [[nodiscard]] error_or
   error_or(const error_or &other) : m_data(other.m_data) {}
   error_or(error_or &&other) noexcept : m_data(std::move(other.m_data)) {}
 
-  error_or &operator=(const error_or &other)
-  {
+  error_or &operator=(const error_or &other) {
     if (this != &other) {
       m_data = other.m_data;
     }
     return *this;
   }
 
-  error_or &operator=(error_or &&other) noexcept
-  {
+  error_or &operator=(error_or &&other) noexcept {
     if (this != &other) {
       m_data = std::move(other.m_data);
     }
@@ -81,27 +70,26 @@ struct [[nodiscard]] error_or
   // Destructor
   ~error_or() = default;
 
-  [[nodiscard]] bool is_err() const
-  {
+  [[nodiscard]] bool is_err() const {
     return std::holds_alternative<error>(m_data);
   }
   [[nodiscard]] explicit operator bool() const { return !is_err(); }
 
-  [[nodiscard]] V &get_value()
-  {
-    if (is_err()) debugtrap(".get_value() called on an error");
+  [[nodiscard]] V &get_value() {
+    if (is_err())
+      debugtrap(".get_value() called on an error");
     return std::get<V>(m_data);
   }
   [[nodiscard]] V &operator*() { return get_value(); }
 
-  [[nodiscard]] V take()
-  {
-    if (is_err()) debugtrap(".take() called on an error");
+  [[nodiscard]] V take() {
+    if (is_err())
+      debugtrap(".take() called on an error");
     return std::move(std::get<V>(m_data));
   }
-  [[nodiscard]] error get_error() const
-  {
-    if (!is_err()) debugtrap(".get_error() called on a value");
+  [[nodiscard]] error get_error() const {
+    if (!is_err())
+      debugtrap(".get_error() called on a value");
     return std::get<error>(m_data);
   }
 
@@ -112,7 +100,8 @@ private:
 #define unwrap(error_or_value)                                                 \
   ({                                                                           \
     let _r = (error_or_value);                                                 \
-    if (!_r) return _r.get_error();                                            \
+    if (!_r)                                                                   \
+      return _r.get_error();                                                   \
     _r.take();                                                                 \
   })
 

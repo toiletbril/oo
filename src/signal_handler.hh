@@ -9,8 +9,7 @@
 
 namespace oo {
 
-class cleanup_guard
-{
+class cleanup_guard {
 public:
   cleanup_guard();
   ~cleanup_guard();
@@ -19,12 +18,12 @@ public:
   fn disarm() -> void;
 
 private:
-  std::vector<std::function<void()>> m_cleanups;
   bool m_armed{true};
+  std::vector<std::function<void()>> m_cleanups;
 
   fn run_cleanups() -> void;
+  static fn handle_signal(int sig) -> void;
 
-  static void handle_signal(int sig);
   static inline cleanup_guard *s_active_guard{nullptr};
   static inline volatile sig_atomic_t s_shutdown_requested{0};
 };

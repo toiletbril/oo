@@ -16,8 +16,7 @@
 
 namespace oo {
 
-fn up(cli::cli &&cli) -> error_or<ok>
-{
+fn up(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case(
       "oo up [-options] <namespace> [--] <daemon> [daemon-args...]",
       "Start a daemon in a new network namespace.");
@@ -78,8 +77,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
       return make_error("Invalid --subnet-prefix value: " + prefix_str);
     }
     if (parsed < constants::MIN_SUBNET_PREFIX_LEN ||
-        parsed > constants::MAX_SUBNET_PREFIX_LEN)
-    {
+        parsed > constants::MAX_SUBNET_PREFIX_LEN) {
       return make_error("--subnet-prefix must be between " +
                         std::to_string(constants::MIN_SUBNET_PREFIX_LEN) +
                         " and " +
@@ -105,8 +103,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
   if (!existing_satan.load().is_err()) {
     if (pid_tracker::is_alive_with_start_time(
             existing_satan.get_daemon_pid(),
-            existing_satan.get_daemon_start_time()))
-    {
+            existing_satan.get_daemon_start_time())) {
       return make_error("Namespace '" + ns_name +
                         "' already has a running daemon (PID " +
                         std::to_string(existing_satan.get_daemon_pid()) + ")");
@@ -154,8 +151,7 @@ fn up(cli::cli &&cli) -> error_or<ok>
 
   if (flag_resolv_conf_path.is_set() || !flag_dns.is_empty()) {
     if (std::filesystem::exists("/var/run/nscd/socket") ||
-        std::filesystem::exists("/run/nscd/socket"))
-    {
+        std::filesystem::exists("/run/nscd/socket")) {
       cli::show_message(
           "warning: nscd is running; custom DNS may be ignored by the daemon");
     }

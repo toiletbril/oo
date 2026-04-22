@@ -15,8 +15,7 @@ namespace oo {
 // wrapped in parens and may contain whitespace or more parens. Skip past the
 // last ')' and then scan whitespace-separated fields from there; field 22
 // (start_time) is the 20th field after that point.
-static fn parse_start_time(const std::string &content) -> error_or<u64>
-{
+static fn parse_start_time(const std::string &content) -> error_or<u64> {
   let rparen = content.rfind(')');
   if (rparen == std::string::npos) {
     return make_error("malformed /proc/<pid>/stat: no ')'");
@@ -37,8 +36,7 @@ static fn parse_start_time(const std::string &content) -> error_or<u64>
   return static_cast<u64>(v);
 }
 
-fn pid_tracker::read_start_time(pid_t pid) -> error_or<u64>
-{
+fn pid_tracker::read_start_time(pid_t pid) -> error_or<u64> {
   trace_variables(verbosity::all, pid);
   if (pid <= 0) {
     return make_error("read_start_time requires a positive pid");
@@ -53,20 +51,22 @@ fn pid_tracker::read_start_time(pid_t pid) -> error_or<u64>
 }
 
 fn pid_tracker::is_alive_with_start_time(pid_t pid, u64 expected_start_time)
-    -> bool
-{
+    -> bool {
   trace_variables(verbosity::all, pid, expected_start_time);
-  if (pid <= 0) return false;
+  if (pid <= 0)
+    return false;
   let actual = read_start_time(pid);
-  if (actual.is_err()) return false;
+  if (actual.is_err())
+    return false;
   return actual.get_value() == expected_start_time;
 }
 
 fn pid_tracker::is_alive_and_matches(pid_t pid,
-                                     std::string_view expected_cmdline) -> bool
-{
+                                     std::string_view expected_cmdline)
+    -> bool {
   trace_variables(verbosity::all, pid, expected_cmdline);
-  if (pid <= 0) return false;
+  if (pid <= 0)
+    return false;
 
   std::filesystem::path cmdline_path =
       "/proc/" + std::to_string(pid) + "/cmdline";
@@ -81,8 +81,7 @@ fn pid_tracker::is_alive_and_matches(pid_t pid,
   return cmdline.find(expected_cmdline) != std::string::npos;
 }
 
-fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t>
-{
+fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t> {
   trace_variables(verbosity::all, path);
   std::ifstream file(path.data());
   if (!file.is_open()) {
@@ -99,8 +98,8 @@ fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t>
   return pid;
 }
 
-fn pid_tracker::write_pid_file(std::string_view path, pid_t pid) -> error_or<ok>
-{
+fn pid_tracker::write_pid_file(std::string_view path, pid_t pid)
+    -> error_or<ok> {
   trace_variables(verbosity::all, path, pid);
   std::filesystem::path file_path(path);
   std::filesystem::path parent = file_path.parent_path();
@@ -130,8 +129,7 @@ fn pid_tracker::write_pid_file(std::string_view path, pid_t pid) -> error_or<ok>
   return ok{};
 }
 
-fn pid_tracker::remove_pid_file(std::string_view path) -> error_or<ok>
-{
+fn pid_tracker::remove_pid_file(std::string_view path) -> error_or<ok> {
   trace_variables(verbosity::all, path);
   std::error_code ec;
   std::filesystem::remove(path.data(), ec);

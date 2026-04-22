@@ -14,8 +14,7 @@ namespace oo {
 
 class passwd;
 
-class satan
-{
+class satan {
 public:
   satan(linux_namespace &ns, passwd &pw) : m_ns(ns), m_pw(pw) {}
 
@@ -30,19 +29,18 @@ public:
 
   // `start_cwd` is the absolute directory the command will chdir into
   // inside the namespace's mount ns, just before execvp.
-  fn execute(const std::vector<std::string> &argv, std::string_view start_cwd)
-      -> error_or<ok>;
+  [[nodiscard]] fn execute(const std::vector<std::string> &argv,
+                           std::string_view start_cwd) -> error_or<ok>;
 
-  fn save() const -> error_or<ok>;
-  fn load() -> error_or<ok>;
+  [[nodiscard]] fn save() const -> error_or<ok>;
+  [[nodiscard]] fn load() -> error_or<ok>;
 
-  fn sweep_orphans() -> error_or<ok>;
+  [[nodiscard]] fn sweep_orphans() -> error_or<ok>;
 
   [[nodiscard]] fn get_daemon_pid() const -> pid_t { return m_daemon_pid; }
   fn set_daemon_pid(pid_t pid) -> void { m_daemon_pid = pid; }
 
-  [[nodiscard]] fn get_daemon_start_time() const -> u64
-  {
+  [[nodiscard]] fn get_daemon_start_time() const -> u64 {
     return m_daemon_start_time;
   }
   fn set_daemon_start_time(u64 s) -> void { m_daemon_start_time = s; }

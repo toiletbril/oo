@@ -20,8 +20,7 @@ linux_namespace::~linux_namespace() = default;
 // Validation is load-bearing. Do not relax without understanding:
 //   1. IFNAMSIZ limit (MAX_NS_NAME_LEN = 5)
 //   2. Path traversal via '..' or special chars in the name
-fn linux_namespace::validate_name() -> error_or<ok>
-{
+fn linux_namespace::validate_name() -> error_or<ok> {
   if (m_name.empty()) {
     return make_error("Namespace name must not be empty.");
   }
@@ -51,8 +50,7 @@ fn linux_namespace::validate_name() -> error_or<ok>
   return ok{};
 }
 
-fn linux_namespace::create_dir() -> error_or<ok>
-{
+fn linux_namespace::create_dir() -> error_or<ok> {
   if (is_dir_created()) {
     trace(verbosity::debug, "Directory already created for namespace '{}'",
           m_name);
@@ -105,8 +103,7 @@ fn linux_namespace::create_dir() -> error_or<ok>
   return ok{};
 }
 
-fn linux_namespace::unshare() -> error_or<ok>
-{
+fn linux_namespace::unshare() -> error_or<ok> {
   trace(verbosity::info, "Unsharing network namespace");
   unwrap(linux::oo_unshare(CLONE_NEWNET));
   trace(verbosity::debug, "Network namespace unshared successfully");
@@ -114,8 +111,7 @@ fn linux_namespace::unshare() -> error_or<ok>
   return ok{};
 }
 
-fn linux_namespace::get_path() -> error_or<std::filesystem::path>
-{
+fn linux_namespace::get_path() -> error_or<std::filesystem::path> {
   insist(!m_name.empty(),
          "get_path would return the runtime root for an unnamed namespace");
   return std::filesystem::path{constants::OO_RUN_DIR}.append(m_name);
@@ -123,9 +119,9 @@ fn linux_namespace::get_path() -> error_or<std::filesystem::path>
 
 fn linux_namespace::is_dir_created() -> bool { return m_is_dir_created; }
 
-fn linux_namespace::dir_exists() const -> bool
-{
-  if (m_name.empty()) return false;
+fn linux_namespace::dir_exists() const -> bool {
+  if (m_name.empty())
+    return false;
   const std::filesystem::path path =
       std::filesystem::path{constants::OO_RUN_DIR}.append(m_name);
   std::error_code ec;
@@ -134,8 +130,7 @@ fn linux_namespace::dir_exists() const -> bool
 
 fn linux_namespace::get_name() -> const std::string & { return m_name; }
 
-fn linux_namespace::reset(network_configurator &nc) -> error_or<ok>
-{
+fn linux_namespace::reset(network_configurator &nc) -> error_or<ok> {
   unused(nc.cleanup());
 
   let ns_path_result = get_path();

@@ -9,8 +9,7 @@
 
 namespace oo {
 
-cleanup_guard::cleanup_guard()
-{
+cleanup_guard::cleanup_guard() {
   struct sigaction sa{};
   sa.sa_handler = handle_signal;
   sigemptyset(&sa.sa_mask);
@@ -34,8 +33,7 @@ cleanup_guard::cleanup_guard()
   trace(verbosity::debug, "Cleanup guard armed with signal handlers");
 }
 
-cleanup_guard::~cleanup_guard()
-{
+cleanup_guard::~cleanup_guard() {
   if (m_armed) {
     run_cleanups();
   }
@@ -45,21 +43,18 @@ cleanup_guard::~cleanup_guard()
   s_active_guard = nullptr;
 }
 
-fn cleanup_guard::add_cleanup(std::function<void()> cleanup_fn) -> void
-{
+fn cleanup_guard::add_cleanup(std::function<void()> cleanup_fn) -> void {
   trace(verbosity::debug, "Adding a cleanup function");
   m_cleanups.push_back(cleanup_fn);
 }
 
-fn cleanup_guard::disarm() -> void
-{
+fn cleanup_guard::disarm() -> void {
   m_armed = false;
   s_active_guard = nullptr;
   trace(verbosity::debug, "Cleanup guard disarmed");
 }
 
-fn cleanup_guard::run_cleanups() -> void
-{
+fn cleanup_guard::run_cleanups() -> void {
   trace(verbosity::info, "Running {} cleanup functions", m_cleanups.size());
 
   // Run in reverse order (LIFO)
@@ -68,8 +63,7 @@ fn cleanup_guard::run_cleanups() -> void
   }
 }
 
-fn cleanup_guard::handle_signal(int sig) -> void
-{
+fn cleanup_guard::handle_signal(int sig) -> void {
   // SECURITY: async-signal-safe only. The handler does NOT dispatch the
   // registered std::function cleanups -- those may allocate, lock a
   // mutex, or touch glibc internals, none of which are safe to call from

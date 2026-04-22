@@ -9,8 +9,7 @@ namespace oo {
 
 namespace oorunner {
 
-struct credentials
-{
+struct credentials {
   uid_t uid;
   gid_t gid;
 };

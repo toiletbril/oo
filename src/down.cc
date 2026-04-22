@@ -15,8 +15,7 @@
 
 namespace oo {
 
-fn down(cli::cli &&cli) -> error_or<ok>
-{
+fn down(cli::cli &&cli) -> error_or<ok> {
   cli.add_use_case("oo down [-options] <namespace>",
                    "Stop the daemon and tear down the namespace.");
 
@@ -69,8 +68,7 @@ fn down(cli::cli &&cli) -> error_or<ok>
   // Graceful shutdown with timeout.
   if (s.get_daemon_pid() > 0) {
     if (pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                              s.get_daemon_start_time()))
-    {
+                                              s.get_daemon_start_time())) {
       trace(verbosity::info, "Sending SIGTERM to daemon PID {}",
             s.get_daemon_pid());
       unwrap(linux::oo_kill(s.get_daemon_pid(), SIGTERM));
@@ -78,8 +76,7 @@ fn down(cli::cli &&cli) -> error_or<ok>
       let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
       for (usize i = 0; i < iterations; ++i) {
         if (!pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                                   s.get_daemon_start_time()))
-        {
+                                                   s.get_daemon_start_time())) {
           trace(verbosity::debug, "Daemon terminated gracefully");
           break;
         }
@@ -87,8 +84,7 @@ fn down(cli::cli &&cli) -> error_or<ok>
       }
 
       if (pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                                s.get_daemon_start_time()))
-      {
+                                                s.get_daemon_start_time())) {
         trace(verbosity::error, "Daemon did not terminate, sending SIGKILL");
         unwrap(linux::oo_kill(s.get_daemon_pid(), SIGKILL));
         unwrap(linux::oo_sleep_ms(constants::FORCEFUL_SHUTDOWN_SLEEP_MS));

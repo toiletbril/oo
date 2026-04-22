@@ -8,8 +8,7 @@
 namespace oo {
 
 // Check PID liveness and handle stale PID detection
-class pid_tracker
-{
+class pid_tracker {
 public:
   // Read field 22 (start time in jiffies) from /proc/<pid>/stat. Returns
   // error if the pid no longer exists or /proc/<pid>/stat cannot be parsed.
@@ -27,13 +26,16 @@ public:
   is_alive_and_matches(pid_t pid, std::string_view expected_cmdline) -> bool;
 
   // Read PID from file
-  static fn read_pid_file(std::string_view path) -> error_or<pid_t>;
+  [[nodiscard]] static fn read_pid_file(std::string_view path)
+      -> error_or<pid_t>;
 
   // Write PID to file (atomic, creates parent dirs)
-  static fn write_pid_file(std::string_view path, pid_t pid) -> error_or<ok>;
+  [[nodiscard]] static fn write_pid_file(std::string_view path, pid_t pid)
+      -> error_or<ok>;
 
   // Remove PID file
-  static fn remove_pid_file(std::string_view path) -> error_or<ok>;
+  [[nodiscard]] static fn remove_pid_file(std::string_view path)
+      -> error_or<ok>;
 };
 
 } // namespace oo

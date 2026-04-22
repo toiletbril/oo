@@ -20,25 +20,19 @@ namespace oo {
 // fixed-layout struct with nlmsghdr + family-specific header + variable
 // attribute buffer. The sizes below are chosen to fit the largest attribute
 // payload used by that request kind.
-template <usize ExtraBytes>
-struct link_request
-{
+template <usize ExtraBytes> struct link_request {
   struct nlmsghdr n;
   struct ifinfomsg i;
   char buf[ExtraBytes];
 };
 
-template <usize ExtraBytes>
-struct addr_request
-{
+template <usize ExtraBytes> struct addr_request {
   struct nlmsghdr n;
   struct ifaddrmsg a;
   char buf[ExtraBytes];
 };
 
-template <usize ExtraBytes>
-struct route_request
-{
+template <usize ExtraBytes> struct route_request {
   struct nlmsghdr n;
   struct rtmsg r;
   char buf[ExtraBytes];
@@ -46,8 +40,7 @@ struct route_request
 
 namespace {
 
-fn init_link_req(let &req, u16 type, u16 flags, u32 ifindex = 0) -> void
-{
+fn init_link_req(let &req, u16 type, u16 flags, u32 ifindex = 0) -> void {
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
   req.n.nlmsg_type = type;
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
@@ -55,8 +48,7 @@ fn init_link_req(let &req, u16 type, u16 flags, u32 ifindex = 0) -> void
   req.i.ifi_index = ifindex;
 }
 
-fn init_addr_req(let &req, u16 type, u16 flags, u32 ifindex, u8 plen) -> void
-{
+fn init_addr_req(let &req, u16 type, u16 flags, u32 ifindex, u8 plen) -> void {
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
   req.n.nlmsg_type = type;
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
@@ -65,8 +57,7 @@ fn init_addr_req(let &req, u16 type, u16 flags, u32 ifindex, u8 plen) -> void
   req.a.ifa_index = ifindex;
 }
 
-fn init_route_req(let &req, u16 type, u16 flags, u8 dst_len) -> void
-{
+fn init_route_req(let &req, u16 type, u16 flags, u8 dst_len) -> void {
   req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
   req.n.nlmsg_type = type;
   req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | flags;
@@ -81,15 +72,13 @@ fn init_route_req(let &req, u16 type, u16 flags, u8 dst_len) -> void
 } // namespace
 
 netlinker::netlinker(linux_namespace &ns)
-    : m_ns(ns), m_sock(), m_cleaned_up(false)
-{
+    : m_ns(ns), m_sock(), m_cleaned_up(false) {
   generate_veth_names();
   insist(!m_veth_host.empty() && !m_veth_ns.empty(),
          "veth names must be generated from a non-empty namespace name");
 }
 
-fn netlinker::generate_veth_names() -> void
-{
+fn netlinker::generate_veth_names() -> void {
   m_veth_host = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
                 std::string{constants::VETH_HOST_SUFFIX};
   m_veth_ns = std::string{constants::VETH_NAME_PREFIX} + m_ns.get_name() +
@@ -98,8 +87,7 @@ fn netlinker::generate_veth_names() -> void
 
 netlinker::~netlinker() = default;
 
-fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32>
-{
+fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
   trace_variables(verbosity::debug, ifname);
   insist(!ifname.empty() && ifname.size() < IFNAMSIZ,
          "interface name must be non-empty and fit in IFNAMSIZ");
@@ -112,8 +100,7 @@ fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32>
 }
 
 fn netlinker::create_veth_pair(std::string_view host_name,
-                               std::string_view ns_name) -> error_or<ok>
-{
+                               std::string_view ns_name) -> error_or<ok> {
   link_request<1024> req{};
   init_link_req(req, RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL);
 
@@ -142,8 +129,7 @@ fn netlinker::create_veth_pair(std::string_view host_name,
 }
 
 fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
-    -> error_or<ok>
-{
+    -> error_or<ok> {
   let ifindex = unwrap(get_ifindex(ifname));
 
   link_request<256> req{};
@@ -161,8 +147,7 @@ fn netlinker::move_to_namespace(std::string_view ifname, pid_t target_pid)
 }
 
 fn netlinker::add_address(std::string_view ifname, std::string_view ip,
-                          u8 prefix_len) -> error_or<ok>
-{
+                          u8 prefix_len) -> error_or<ok> {
   trace_variables(verbosity::debug, ifname, ip, prefix_len);
 
   let ifindex = unwrap(get_ifindex(ifname));
@@ -193,8 +178,7 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
 }
 
 fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
-                        std::string_view gateway) -> error_or<ok>
-{
+                        std::string_view gateway) -> error_or<ok> {
   trace_variables(verbosity::debug, dest_ip, prefix_len, gateway);
 
   route_request<256> req{};
@@ -203,8 +187,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   netlink_builder builder(&req.n, sizeof(req));
 
   if (prefix_len > 0 && !dest_ip.empty() &&
-      dest_ip != constants::DEFAULT_GATEWAY_IP)
-  {
+      dest_ip != constants::DEFAULT_GATEWAY_IP) {
     insist(dest_ip.find('\0') == std::string_view::npos,
            "destination IP must be a non-empty C string");
     struct in_addr dst;
@@ -230,8 +213,7 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
   return ok{};
 }
 
-fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
-{
+fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok> {
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
@@ -248,8 +230,7 @@ fn netlinker::set_link_up(std::string_view ifname) -> error_or<ok>
   return ok{};
 }
 
-fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
-{
+fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok> {
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
@@ -266,8 +247,7 @@ fn netlinker::set_link_down(std::string_view ifname) -> error_or<ok>
   return ok{};
 }
 
-fn netlinker::delete_link(std::string_view ifname) -> error_or<ok>
-{
+fn netlinker::delete_link(std::string_view ifname) -> error_or<ok> {
   trace_variables(verbosity::debug, ifname);
 
   let ifindex = unwrap(get_ifindex(ifname));
@@ -282,8 +262,7 @@ fn netlinker::delete_link(std::string_view ifname) -> error_or<ok>
   return ok{};
 }
 
-fn netlinker::cleanup() -> error_or<ok>
-{
+fn netlinker::cleanup() -> error_or<ok> {
   if (m_cleaned_up) {
     return ok{};
   }

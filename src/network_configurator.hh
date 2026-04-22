@@ -13,8 +13,7 @@ namespace oo {
 
 // Orchestrates network setup: veth pair, IPs, routes, firewall.
 // Detects default route interface automatically.
-class network_configurator
-{
+class network_configurator {
 public:
   network_configurator(linux_namespace &ns, subnet s);
   ~network_configurator();
@@ -29,16 +28,13 @@ public:
   fn save() const -> error_or<ok>;
   fn load() -> error_or<ok>;
 
-  [[nodiscard]] fn get_veth_host_name() const -> std::string_view
-  {
+  [[nodiscard]] fn get_veth_host_name() const -> std::string_view {
     return m_netlinker.get_veth_host_name();
   }
-  [[nodiscard]] fn get_veth_ns_name() const -> std::string_view
-  {
+  [[nodiscard]] fn get_veth_ns_name() const -> std::string_view {
     return m_netlinker.get_veth_ns_name();
   }
-  [[nodiscard]] fn get_subnet_octet() const -> u8
-  {
+  [[nodiscard]] fn get_subnet_octet() const -> u8 {
     return m_subnet.get_third_octet();
   }
   [[nodiscard]] fn get_netlinker() -> netlinker & { return m_netlinker; }

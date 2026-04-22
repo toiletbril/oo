@@ -8,10 +8,10 @@
 
 namespace oo {
 
-static fn trim(std::string_view s) -> std::string_view
-{
+static fn trim(std::string_view s) -> std::string_view {
   let begin = s.find_first_not_of(" \t\r");
-  if (begin == std::string_view::npos) return {};
+  if (begin == std::string_view::npos)
+    return {};
   let end = s.find_last_not_of(" \t\r");
   return s.substr(begin, end - begin + 1);
 }
@@ -20,14 +20,12 @@ ini_file::ini_file(std::filesystem::path path) : m_path(std::move(path)) {}
 
 ini_file::ini_file(ini_file &&other) noexcept
     : m_path(std::move(other.m_path)), m_lines(std::move(other.m_lines)),
-      m_dirty(other.m_dirty), m_loaded(other.m_loaded)
-{
+      m_dirty(other.m_dirty), m_loaded(other.m_loaded) {
   other.m_dirty = false;
   other.m_loaded = false;
 }
 
-ini_file::~ini_file()
-{
+ini_file::~ini_file() {
   if (m_dirty) {
     if (let r = flush(); r.is_err()) {
       trace(verbosity::error, "Failed to flush ini file {}: {}",
@@ -36,8 +34,7 @@ ini_file::~ini_file()
   }
 }
 
-fn ini_file::load() -> error_or<ok>
-{
+fn ini_file::load() -> error_or<ok> {
   insist(!m_path.empty(), "ini_file constructed with empty path");
 
   m_lines.clear();
@@ -114,8 +111,7 @@ fn ini_file::load() -> error_or<ok>
   return ok{};
 }
 
-fn ini_file::flush() -> error_or<ok>
-{
+fn ini_file::flush() -> error_or<ok> {
   std::error_code ec;
   let parent = m_path.parent_path();
   if (!parent.empty() && !std::filesystem::exists(parent, ec)) {
@@ -146,28 +142,29 @@ fn ini_file::flush() -> error_or<ok>
   return ok{};
 }
 
-fn ini_file::find_entry(std::string_view key) -> ini_entry *
-{
+fn ini_file::find_entry(std::string_view key) -> ini_entry * {
   for (let &line : m_lines) {
-    if (line->get_kind() != ini_line::kind::entry) continue;
+    if (line->get_kind() != ini_line::kind::entry)
+      continue;
     let *e = static_cast<ini_entry *>(line.get());
-    if (e->get_key() == key) return e;
+    if (e->get_key() == key)
+      return e;
   }
   return nullptr;
 }
 
-fn ini_file::find_entry_const(std::string_view key) const -> const ini_entry *
-{
+fn ini_file::find_entry_const(std::string_view key) const -> const ini_entry * {
   for (const let &line : m_lines) {
-    if (line->get_kind() != ini_line::kind::entry) continue;
+    if (line->get_kind() != ini_line::kind::entry)
+      continue;
     const let *e = static_cast<const ini_entry *>(line.get());
-    if (e->get_key() == key) return e;
+    if (e->get_key() == key)
+      return e;
   }
   return nullptr;
 }
 
-fn ini_file::set(std::string_view key, std::string_view value) -> void
-{
+fn ini_file::set(std::string_view key, std::string_view value) -> void {
   if (let *e = find_entry(key); e != nullptr) {
     if (e->get_value() != value) {
       e->set_value(std::string{value});
@@ -180,17 +177,16 @@ fn ini_file::set(std::string_view key, std::string_view value) -> void
   m_dirty = true;
 }
 
-fn ini_file::append(std::string_view key, std::string_view value) -> void
-{
+fn ini_file::append(std::string_view key, std::string_view value) -> void {
   m_lines.push_back(
       std::make_unique<ini_entry>(std::string{key}, std::string{value}));
   m_dirty = true;
 }
 
-fn ini_file::remove(std::string_view key) -> bool
-{
+fn ini_file::remove(std::string_view key) -> bool {
   for (let it = m_lines.begin(); it != m_lines.end(); ++it) {
-    if ((*it)->get_kind() != ini_line::kind::entry) continue;
+    if ((*it)->get_kind() != ini_line::kind::entry)
+      continue;
     const let *e = static_cast<const ini_entry *>(it->get());
     if (e->get_key() == key) {
       m_lines.erase(it);
@@ -201,27 +197,25 @@ fn ini_file::remove(std::string_view key) -> bool
   return false;
 }
 
-fn ini_file::find(std::string_view key) const -> std::optional<std::string>
-{
+fn ini_file::find(std::string_view key) const -> std::optional<std::string> {
   if (const let *e = find_entry_const(key); e != nullptr) {
     return e->get_value();
   }
   return std::nullopt;
 }
 
-fn ini_file::entries() const -> std::vector<entry>
-{
+fn ini_file::entries() const -> std::vector<entry> {
   std::vector<entry> out;
   for (const let &line : m_lines) {
-    if (line->get_kind() != ini_line::kind::entry) continue;
+    if (line->get_kind() != ini_line::kind::entry)
+      continue;
     const let *e = static_cast<const ini_entry *>(line.get());
     out.push_back(entry{e->get_key(), e->get_value()});
   }
   return out;
 }
 
-fn ini_file::header_end_index() const -> usize
-{
+fn ini_file::header_end_index() const -> usize {
   usize i = 0;
   for (; i < m_lines.size(); ++i) {
     const let kind = m_lines[i]->get_kind();
@@ -232,8 +226,7 @@ fn ini_file::header_end_index() const -> usize
   return i;
 }
 
-fn ini_file::set_header(std::string_view comment) -> void
-{
+fn ini_file::set_header(std::string_view comment) -> void {
   // Drop existing leading comment/blank block and replace with the new one.
   const usize end = header_end_index();
   m_lines.erase(m_lines.begin(),
@@ -245,7 +238,8 @@ fn ini_file::set_header(std::string_view comment) -> void
     let nl = view.find('\n');
     let chunk = (nl == std::string_view::npos) ? view : view.substr(0, nl);
     header.push_back(std::make_unique<ini_comment>(std::string{chunk}));
-    if (nl == std::string_view::npos) break;
+    if (nl == std::string_view::npos)
+      break;
     view.remove_prefix(nl + 1);
   }
 

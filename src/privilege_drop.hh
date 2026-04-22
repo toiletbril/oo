@@ -11,16 +11,15 @@ namespace oo {
 // transitions into and out of the oorunner service account. One instance
 // per subcommand invocation: su_oorunner() captures the invoking
 // credentials into members, then forked children call su() to drop back
-// to them before drop_for_exec() and execvp().
+// to them before drop_all_caps() and execvp().
 //
 // SECURITY: This is the runtime permission-model invariant. The parent
 // writes to /var/run/oo as oorunner (normal DAC), never via
 // CAP_DAC_OVERRIDE. Capabilities survive su_oorunner() via
 // PR_SET_KEEPCAPS and are re-raised into the effective set after
-// setresuid. su() preserves no caps; the caller must run drop_for_exec()
-// itself immediately after.
-class passwd
-{
+// setresuid. su() preserves no caps; the caller must run drop_for_exec
+// (drop_all_caps / drop_all_caps_except) itself immediately after.
+class passwd {
 public:
   passwd() = default;
 

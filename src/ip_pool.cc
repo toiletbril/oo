@@ -10,23 +10,19 @@
 namespace oo {
 
 subnet::subnet(u8 third_octet, u8 prefix_len)
-    : m_third_octet(third_octet), m_prefix_len(prefix_len)
-{
+    : m_third_octet(third_octet), m_prefix_len(prefix_len) {
   trace(verbosity::info, "Subnet {}", to_string());
 }
 
-fn subnet::host_ip() const -> std::string
-{
+fn subnet::host_ip() const -> std::string {
   return "10.0." + std::to_string(m_third_octet) + ".1";
 }
 
-fn subnet::ns_ip() const -> std::string
-{
+fn subnet::ns_ip() const -> std::string {
   return "10.0." + std::to_string(m_third_octet) + ".2";
 }
 
-fn subnet::to_string() const -> std::string
-{
+fn subnet::to_string() const -> std::string {
   return "10.0." + std::to_string(m_third_octet) + ".0/" +
          std::to_string(static_cast<u32>(m_prefix_len));
 }
@@ -34,14 +30,12 @@ fn subnet::to_string() const -> std::string
 // The pool key always uses /30 regardless of the chosen prefix so the
 // bitmap remains third-octet keyed. Wider prefixes chosen by the user are
 // stored per-namespace in network.ini, not in the pool.
-static fn pool_key(u8 third_octet) -> std::string
-{
+static fn pool_key(u8 third_octet) -> std::string {
   return "10.0." + std::to_string(third_octet) + ".0/30";
 }
 
 ip_pool::ip_pool(linux_namespace &ns)
-    : m_ns(ns), m_lock(LOCK_FILE), m_file(POOL_FILE)
-{
+    : m_ns(ns), m_lock(LOCK_FILE), m_file(POOL_FILE) {
   std::error_code ec;
   let pool_dir = std::filesystem::path{POOL_FILE}.parent_path();
   if (!pool_dir.empty() && !std::filesystem::exists(pool_dir, ec)) {
@@ -61,8 +55,7 @@ ip_pool::ip_pool(linux_namespace &ns)
       "IP Pool allocation state\nFormat: <subnet>=<namespace_name>");
 }
 
-static fn parse_octet_from_key(const std::string &key) -> error_or<u8>
-{
+static fn parse_octet_from_key(const std::string &key) -> error_or<u8> {
   let first_dot = key.find('.');
   if (first_dot == std::string::npos) {
     return make_error("Invalid pool key: " + key);
@@ -86,8 +79,7 @@ static fn parse_octet_from_key(const std::string &key) -> error_or<u8>
   return static_cast<u8>(v);
 }
 
-fn ip_pool::allocate() -> error_or<subnet>
-{
+fn ip_pool::allocate() -> error_or<subnet> {
   trace(verbosity::debug, "Allocating subnet for namespace '{}'",
         m_ns.get_name());
   if (!m_lock.is_held()) {
@@ -116,8 +108,7 @@ fn ip_pool::allocate() -> error_or<subnet>
   return make_error("No available subnets in pool");
 }
 
-fn ip_pool::free(subnet s) -> error_or<ok>
-{
+fn ip_pool::free(subnet s) -> error_or<ok> {
   trace(verbosity::debug, "free({}/{})", s.get_third_octet(),
         s.get_prefix_len());
   if (!m_lock.is_held()) {

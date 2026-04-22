@@ -12,13 +12,11 @@ namespace oo {
 file_lock::file_lock(std::filesystem::path path) : m_path(std::move(path)) {}
 
 file_lock::file_lock(file_lock &&other) noexcept
-    : m_path(std::move(other.m_path)), m_fd(other.m_fd)
-{
+    : m_path(std::move(other.m_path)), m_fd(other.m_fd) {
   other.m_fd = -1;
 }
 
-file_lock::~file_lock()
-{
+file_lock::~file_lock() {
   if (m_fd >= 0) {
     if (let r = release(); r.is_err()) {
       trace(verbosity::error, "Failed to release file lock on {}: {}",
@@ -27,8 +25,7 @@ file_lock::~file_lock()
   }
 }
 
-fn file_lock::acquire() -> error_or<ok>
-{
+fn file_lock::acquire() -> error_or<ok> {
   insist(!m_path.empty(), "file_lock constructed with empty path");
   if (m_fd >= 0) {
     return make_error("Lock already held on " + m_path.string());
@@ -58,8 +55,7 @@ fn file_lock::acquire() -> error_or<ok>
   return ok{};
 }
 
-fn file_lock::release() -> error_or<ok>
-{
+fn file_lock::release() -> error_or<ok> {
   if (m_fd < 0) {
     return make_error("No lock held on " + m_path.string());
   }

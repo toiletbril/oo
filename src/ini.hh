@@ -16,32 +16,22 @@ namespace oo {
 // A single parsed line from an INI file. Preserves round-trip structure: a
 // file loaded and re-flushed is byte-equivalent modulo surrounding
 // whitespace on entries.
-class ini_line
-{
+class ini_line {
 public:
-  enum class kind
-  {
-    comment,
-    section,
-    entry,
-    blank
-  };
+  enum class kind { comment, section, entry, blank };
 
   virtual ~ini_line() = default;
   virtual fn get_kind() const -> kind = 0;
   virtual fn write_to(std::ostream &out) const -> void = 0;
 };
 
-class ini_comment : public ini_line
-{
+class ini_comment : public ini_line {
 public:
   explicit ini_comment(std::string text, char marker = '#')
-      : m_text(std::move(text)), m_marker(marker)
-  {}
+      : m_text(std::move(text)), m_marker(marker) {}
 
   fn get_kind() const -> kind override { return kind::comment; }
-  fn write_to(std::ostream &out) const -> void override
-  {
+  fn write_to(std::ostream &out) const -> void override {
     out << m_marker << ' ' << m_text << '\n';
   }
 
@@ -50,14 +40,12 @@ private:
   char m_marker;
 };
 
-class ini_section : public ini_line
-{
+class ini_section : public ini_line {
 public:
   explicit ini_section(std::string name) : m_name(std::move(name)) {}
 
   fn get_kind() const -> kind override { return kind::section; }
-  fn write_to(std::ostream &out) const -> void override
-  {
+  fn write_to(std::ostream &out) const -> void override {
     out << '[' << m_name << "]\n";
   }
 
@@ -67,16 +55,13 @@ private:
   std::string m_name;
 };
 
-class ini_entry : public ini_line
-{
+class ini_entry : public ini_line {
 public:
   ini_entry(std::string key, std::string value)
-      : m_key(std::move(key)), m_value(std::move(value))
-  {}
+      : m_key(std::move(key)), m_value(std::move(value)) {}
 
   fn get_kind() const -> kind override { return kind::entry; }
-  fn write_to(std::ostream &out) const -> void override
-  {
+  fn write_to(std::ostream &out) const -> void override {
     out << m_key << '=' << m_value << '\n';
   }
 
@@ -89,8 +74,7 @@ private:
   std::string m_value;
 };
 
-class ini_blank : public ini_line
-{
+class ini_blank : public ini_line {
 public:
   fn get_kind() const -> kind override { return kind::blank; }
   fn write_to(std::ostream &out) const -> void override { out << '\n'; }
@@ -100,12 +84,10 @@ public:
 // on destruction. Comments begin with `#` or `;`. Lines starting with `[` are
 // tolerated as section markers and must close with `]`, but section scoping
 // is not applied to keys.
-class ini_file
-{
+class ini_file {
 public:
   // Back-compat alias for callers that still use the old struct form.
-  struct entry
-  {
+  struct entry {
     std::string key;
     std::string value;
   };

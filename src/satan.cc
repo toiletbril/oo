@@ -22,8 +22,7 @@ namespace oo {
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view start_cwd,
                        std::string_view resolv_conf_path,
-                       std::string_view nsswitch_conf_path) -> error_or<pid_t>
-{
+                       std::string_view nsswitch_conf_path) -> error_or<pid_t> {
   insist(!daemonized_argv.empty(),
          "spawn_daemon requires at least one argv element for execvp");
   insist(!daemonized_argv[0].empty(),
@@ -113,7 +112,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     // SECURITY: Drop all capabilities before exec so the daemon process
     // starts with no elevated privileges. The daemon runs inside the
     // network namespace and needs no special capabilities.
-    unwrap(caps::drop_for_exec());
+    unwrap(caps::drop_all_caps());
 
     // Land the daemon in the caller's chosen directory. chdir runs as the
     // invoking user (m_pw.su() above), so the check is the caller's own
@@ -155,7 +154,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     // the human's uid (not oorunner), and clear caps so the reaper holds
     // no elevated privileges.
     unused(m_pw.su());
-    unused(caps::drop_for_exec());
+    unused(caps::drop_all_caps());
 
     let ok_msg = std::string{constants::DAEMON_MSG_OK} +
                  std::to_string(daemon_pid) + "\n";
@@ -217,8 +216,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   return child_pid;
 }
 
-fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>
-{
+fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
   trace_variables(verbosity::debug, daemon_pid, inner_pid);
   let net_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
   linux::oo_fd net_fd{unwrap(linux::oo_open(net_ns_path.c_str(), O_RDONLY))};
@@ -251,8 +249,7 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>
   return ok{};
 }
 
-fn satan::save() const -> error_or<ok>
-{
+fn satan::save() const -> error_or<ok> {
   trace_self(verbosity::debug);
   let ns_path = unwrap(m_ns.get_path());
   let pid_path = ns_path / PID_FILE;
@@ -272,8 +269,7 @@ fn satan::save() const -> error_or<ok>
   return ok{};
 }
 
-fn satan::load() -> error_or<ok>
-{
+fn satan::load() -> error_or<ok> {
   let ns_path = unwrap(m_ns.get_path());
   let pid_path = ns_path / PID_FILE;
 
@@ -304,16 +300,14 @@ fn satan::load() -> error_or<ok>
   return ok{};
 }
 
-fn satan::sweep_orphans() -> error_or<ok>
-{
+fn satan::sweep_orphans() -> error_or<ok> {
   std::error_code ec;
   if (!std::filesystem::exists(constants::OO_RUN_DIR, ec) || ec) {
     return ok{};
   }
 
   for (let &entry :
-       std::filesystem::directory_iterator(constants::OO_RUN_DIR, ec))
-  {
+       std::filesystem::directory_iterator(constants::OO_RUN_DIR, ec)) {
     if (ec) {
       trace(verbosity::error, "Failed to enumerate {}: {}",
             constants::OO_RUN_DIR, ec.message());
@@ -331,8 +325,7 @@ fn satan::sweep_orphans() -> error_or<ok>
     if (probe.load().is_err()) {
       orphan = true;
     } else if (!pid_tracker::is_alive_with_start_time(
-                   probe.get_daemon_pid(), probe.get_daemon_start_time()))
-    {
+                   probe.get_daemon_pid(), probe.get_daemon_start_time())) {
       orphan = true;
     }
 
@@ -352,8 +345,8 @@ fn satan::sweep_orphans() -> error_or<ok>
     // let orphan cleanup be weaponized into an out-of-tree write.
     std::error_code stat_ec;
     let target_status = std::filesystem::symlink_status(target, stat_ec);
-    if (!stat_ec && target_status.type() == std::filesystem::file_type::symlink)
-    {
+    if (!stat_ec &&
+        target_status.type() == std::filesystem::file_type::symlink) {
       return make_error("Refusing to clean orphan '" + name + "': target " +
                         target.string() + " is a symlink");
     }
@@ -408,8 +401,7 @@ fn satan::sweep_orphans() -> error_or<ok>
 }
 
 fn satan::execute(const std::vector<std::string> &argv,
-                  std::string_view start_cwd) -> error_or<ok>
-{
+                  std::string_view start_cwd) -> error_or<ok> {
   insist(!argv.empty(), "satan::execute requires at least one argv element");
   insist(!argv[0].empty(), "argv[0] must be the program path for execvp");
   insist(!start_cwd.empty() && start_cwd.front() == '/',
@@ -424,8 +416,8 @@ fn satan::execute(const std::vector<std::string> &argv,
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
 
-  if (!pid_tracker::is_alive_with_start_time(m_daemon_pid, m_daemon_start_time))
-  {
+  if (!pid_tracker::is_alive_with_start_time(m_daemon_pid,
+                                             m_daemon_start_time)) {
     trace(verbosity::error, "Daemon has stale PID {}.", m_daemon_pid);
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
   }
@@ -442,7 +434,7 @@ fn satan::execute(const std::vector<std::string> &argv,
   // SECURITY: Drop all capabilities before exec. setns() (enter_namespace)
   // already ran in this process using its file capabilities. The exec'd
   // command runs inside the namespace and needs no elevated privileges.
-  unwrap(caps::drop_for_exec());
+  unwrap(caps::drop_all_caps());
 
   // Land the command in the caller's cwd inside the namespace's mount ns.
   // The path is resolved in the new mount ns; if it is not reachable
