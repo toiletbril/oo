@@ -22,9 +22,6 @@ public:
 
   [[nodiscard]] fn prepare(const endpoint &bind) -> error_or<ok> override;
   [[nodiscard]] fn run() -> error_or<ok> override;
-  [[nodiscard]] fn name() const -> std::string_view override {
-    return "builtin";
-  }
 
 private:
   linux_namespace &m_ns;

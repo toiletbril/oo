@@ -100,7 +100,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
 
     // The daemon only reports through its write end, so drop the read end.
     exec_rd.reset(-1);
-    linux::set_process_name("oo " + ns.get_name() + " daemon");
+    linux::set_process_name("oo: daemon [" + ns.get_name() + "]");
 
     // With dns_on_monitor the daemon keeps the host's /etc/resolv.conf. The
     // monitor process applies the bind mounts in its own mount ns instead,
@@ -176,7 +176,7 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
     unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
 
-    linux::set_process_name("oo " + m_ns.get_name() + " child forker");
+    linux::set_process_name("oo: daemon monitor [" + m_ns.get_name() + "]");
 
     pipe_rd.reset(-1);
     let ret = start_daemon(m_ns);
@@ -408,8 +408,8 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
 
       let p = make_proxy(kind, m_ns, m_daemon_pid);
 
-      linux::set_process_name("oo proxy " + std::string{p->name()} + " " +
-                              bind.to_string() + " " + m_ns.get_name());
+      linux::set_process_name("oo: http proxy on " + bind.to_string() + " [" +
+                              m_ns.get_name() + "]");
 
       // Bind while still privileged so any port works and a bind failure is
       // reported to the parent before privileges are dropped.

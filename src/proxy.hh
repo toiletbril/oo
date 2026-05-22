@@ -44,7 +44,6 @@ public:
 
   [[nodiscard]] virtual fn prepare(const endpoint &bind) -> error_or<ok> = 0;
   [[nodiscard]] virtual fn run() -> error_or<ok> = 0;
-  [[nodiscard]] virtual fn name() const -> std::string_view = 0;
 
 protected:
   proxy() = default;
