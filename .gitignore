@@ -13,3 +13,5 @@ r.sh
 /compile_commands.json
 /test/trace.log.lock
 /test/trace.log
+/test/root/trace.log.lock
+/test/root/trace.log
