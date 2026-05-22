@@ -1,0 +1,23 @@
+#!/bin/sh
+# Verify that --subnet-prefix rejects a non-numeric value and values outside
+# the 16 to 30 range, before any namespace state is created.
+
+NS="spi"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+check_rejected() {
+  label=$1
+  shift
+  if "$BIN" $FLAGS up "$@" -- sleep 0; then
+    echo "$label: accepted (FAILED)"
+  else
+    echo "$label: rejected (ok)"
+  fi
+}
+
+check_rejected "nonnumeric" "$NS" --subnet-prefix=foo
+check_rejected "toosmall"   "$NS" --subnet-prefix=10
+check_rejected "toolarge"   "$NS" --subnet-prefix=31

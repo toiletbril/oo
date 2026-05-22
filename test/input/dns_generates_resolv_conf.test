@@ -1,0 +1,24 @@
+#!/bin/sh
+# Verify that --dns writes a resolv.conf with one nameserver line per value.
+
+NS="dg"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --dns=1.1.1.1 --dns=8.8.8.8 -- sleep 3
+
+RESOLV="/var/run/oo/$NS/resolv.conf"
+
+if grep -q '^nameserver 1\.1\.1\.1$' "$RESOLV"; then
+  echo "resolv has first nameserver (ok)"
+else
+  echo "resolv has first nameserver (FAILED)"
+fi
+
+if grep -q '^nameserver 8\.8\.8\.8$' "$RESOLV"; then
+  echo "resolv has second nameserver (ok)"
+else
+  echo "resolv has second nameserver (FAILED)"
+fi

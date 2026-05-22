@@ -1,0 +1,24 @@
+#!/bin/sh
+# Verify that `oo exec` returns the exit code of the command it runs.
+
+NS="ec"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+"$BIN" $FLAGS exec "$NS" -- sh -c 'exit 42'
+if test $? -eq 42; then
+  echo "exec propagates exit 42 (ok)"
+else
+  echo "exec propagates exit 42 (FAILED)"
+fi
+
+"$BIN" $FLAGS exec "$NS" -- true
+if test $? -eq 0; then
+  echo "exec propagates exit 0 (ok)"
+else
+  echo "exec propagates exit 0 (FAILED)"
+fi

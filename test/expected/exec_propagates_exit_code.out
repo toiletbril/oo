@@ -1,0 +1,2 @@
+exec propagates exit 42.*ok
+exec propagates exit 0.*ok

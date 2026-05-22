@@ -1,0 +1,17 @@
+#!/bin/sh
+# Verify that `oo up` generates an nsswitch.conf that resolves hosts through
+# files then DNS.
+
+NS="ng"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 3
+
+if grep -q '^hosts: files dns$' "/var/run/oo/$NS/nsswitch.conf"; then
+  echo "nsswitch generated (ok)"
+else
+  echo "nsswitch generated (FAILED)"
+fi

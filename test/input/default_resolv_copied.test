@@ -1,0 +1,17 @@
+#!/bin/sh
+# Verify that without --dns or --dns-file the namespace resolv.conf is a copy of
+# the host's /etc/resolv.conf.
+
+NS="dc"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 3
+
+if cmp -s /etc/resolv.conf "/var/run/oo/$NS/resolv.conf"; then
+  echo "default resolv copied (ok)"
+else
+  echo "default resolv copied (FAILED)"
+fi

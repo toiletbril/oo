@@ -1,0 +1,21 @@
+#!/bin/sh
+# Verify that --dns-file rejects a symlink. Opening with O_NOFOLLOW stops a
+# caller from pointing the flag at a symlink to a file they could not otherwise
+# have copied into the namespace.
+
+NS="dl"
+LINK=$(mktemp -u)
+ln -s /etc/hostname "$LINK"
+
+cleanup() {
+  "$BIN" $FLAGS down "$NS" || true
+  rm -f "$LINK"
+}
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+if "$BIN" $FLAGS up "$NS" --dns-file="$LINK" -- sleep 1; then
+  echo "dns-file symlink: accepted (FAILED)"
+else
+  echo "dns-file symlink: rejected (ok)"
+fi

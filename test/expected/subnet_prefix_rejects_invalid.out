@@ -1,0 +1,3 @@
+nonnumeric: rejected.*ok
+toosmall: rejected.*ok
+toolarge: rejected.*ok

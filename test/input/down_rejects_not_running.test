@@ -1,0 +1,13 @@
+#!/bin/sh
+# Verify that `oo down` on a namespace that is not running is rejected rather
+# than silently succeeding.
+
+NS="dn"
+
+"$BIN" $FLAGS down "$NS" || true
+
+if "$BIN" $FLAGS down "$NS"; then
+  echo "down on not-running ns: accepted (FAILED)"
+else
+  echo "down on not-running ns: rejected (ok)"
+fi

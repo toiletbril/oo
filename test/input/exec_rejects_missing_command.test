@@ -1,0 +1,17 @@
+#!/bin/sh
+# Verify that `oo exec` on a live namespace with no command is rejected, which
+# is a different error path from the missing-namespace case.
+
+NS="em"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+if "$BIN" $FLAGS exec "$NS"; then
+  echo "exec without command: accepted (FAILED)"
+else
+  echo "exec without command: rejected (ok)"
+fi

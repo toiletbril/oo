@@ -1,0 +1,14 @@
+#!/bin/sh
+# Verify that --dns-file rejects a path that is not a regular file.
+
+NS="dd"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+if "$BIN" $FLAGS up "$NS" --dns-file=/tmp -- sleep 1; then
+  echo "dns-file directory: accepted (FAILED)"
+else
+  echo "dns-file directory: rejected (ok)"
+fi

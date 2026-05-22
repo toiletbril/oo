@@ -1,0 +1,20 @@
+#!/bin/sh
+# Verify that the namespace has a default route through the host side of the
+# veth, which is what carries egress traffic out to NAT.
+
+NS="dr"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+OCT=$(grep '^subnet_octet=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)
+ROUTES=$("$BIN" $FLAGS exec "$NS" -- ip route show)
+
+if echo "$ROUTES" | grep -q "default via 10\.0\.${OCT}\.1"; then
+  echo "default route present (ok)"
+else
+  echo "default route present (FAILED)"
+fi

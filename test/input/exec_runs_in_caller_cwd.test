@@ -1,0 +1,19 @@
+#!/bin/sh
+# Verify that `oo exec` runs the command in the caller's current directory.
+
+NS="ew"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+EXPECTED=$(pwd -P)
+ACTUAL=$("$BIN" $FLAGS exec "$NS" -- pwd)
+
+if test "$ACTUAL" = "$EXPECTED"; then
+  echo "exec runs in caller cwd (ok)"
+else
+  echo "exec cwd=$ACTUAL want=$EXPECTED (FAILED)"
+fi

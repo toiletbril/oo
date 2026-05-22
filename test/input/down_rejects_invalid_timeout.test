@@ -1,0 +1,18 @@
+#!/bin/sh
+# Verify that `oo down` rejects a non-numeric or out-of-range --timeout. The
+# value is parsed before any teardown work, so a namespace need not exist.
+
+NS="dt2"
+
+check_rejected() {
+  label=$1
+  shift
+  if "$BIN" $FLAGS down "$@"; then
+    echo "$label: accepted (FAILED)"
+  else
+    echo "$label: rejected (ok)"
+  fi
+}
+
+check_rejected "nonnumeric" "$NS" --timeout=abc
+check_rejected "toolarge"   "$NS" --timeout=99999

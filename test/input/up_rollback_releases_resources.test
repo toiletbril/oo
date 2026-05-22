@@ -1,0 +1,34 @@
+#!/bin/sh
+# Verify that a failed `oo up` rolls back everything it started to create. A
+# daemon that cannot be exec'd makes the spawn fail after the subnet, veth, and
+# firewall rules are in place, so the cleanup guard must release them all.
+
+NS="rb"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+if "$BIN" $FLAGS up "$NS" -- /nonexistent/oo-missing-daemon; then
+  echo "up with bad daemon: accepted (FAILED)"
+else
+  echo "up with bad daemon: rejected (ok)"
+fi
+
+if ip link show "veth-${NS}-host" >/dev/null 2>&1; then
+  echo "veth left behind (FAILED)"
+else
+  echo "veth released (ok)"
+fi
+
+if grep -q "=${NS}\$" /var/run/oo/ip-pool.ini 2>/dev/null; then
+  echo "pool entry left behind (FAILED)"
+else
+  echo "pool entry released (ok)"
+fi
+
+if test -d "/var/run/oo/$NS"; then
+  echo "namespace dir left behind (FAILED)"
+else
+  echo "namespace dir released (ok)"
+fi

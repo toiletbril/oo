@@ -1,0 +1,24 @@
+#!/bin/sh
+# Verify that a valid --subnet-prefix is recorded in network.ini and applied to
+# the host veth address.
+
+NS="sp"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --subnet-prefix=24 -- sleep 3
+
+PREFIX=$(grep '^subnet_prefix=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)
+if test "$PREFIX" = "24"; then
+  echo "subnet prefix recorded (ok)"
+else
+  echo "subnet prefix recorded=$PREFIX (FAILED)"
+fi
+
+if ip -o addr show "veth-${NS}-host" | grep -q ' inet 10\.0\.[0-9]*\.1/24 '; then
+  echo "subnet prefix applied to veth (ok)"
+else
+  echo "subnet prefix applied to veth (FAILED)"
+fi

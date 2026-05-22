@@ -1,0 +1,20 @@
+#!/bin/sh
+# Verify that --at-root lands the daemon at cwd=/ rather than the caller's
+# current directory.
+
+NS="ar"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --at-root -- sleep 30
+
+CHILD_PID=$(grep '^child_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+CWD=$(readlink "/proc/$CHILD_PID/cwd")
+
+if test "$CWD" = "/"; then
+  echo "daemon cwd is root (ok)"
+else
+  echo "daemon cwd=$CWD (FAILED)"
+fi

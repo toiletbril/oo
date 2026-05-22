@@ -1,0 +1,26 @@
+#!/bin/sh
+# Verify that --dns-file uses the caller's file even when only the caller can
+# read it. The file is mode 0600 owned by the invoking user, so oorunner cannot
+# read it; oo must open it before dropping privileges and copy the contents
+# into the namespace resolv.conf.
+
+NS="dm"
+
+WORK=$(mktemp)
+chmod 600 "$WORK"
+printf 'nameserver 9.9.9.9\n' > "$WORK"
+
+cleanup() {
+  "$BIN" $FLAGS down "$NS" || true
+  rm -f "$WORK"
+}
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --dns-file="$WORK" -- sleep 3
+
+if grep -q '^nameserver 9\.9\.9\.9$' "/var/run/oo/$NS/resolv.conf"; then
+  echo "dns-file contents used (ok)"
+else
+  echo "dns-file contents used (FAILED)"
+fi

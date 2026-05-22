@@ -1,0 +1,4 @@
+up with bad daemon: rejected.*ok
+veth released.*ok
+pool entry released.*ok
+namespace dir released.*ok

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Verify that `oo init` refuses to run without root. The integration suite runs
+# as an unprivileged user, so init must reject it rather than touch the binary
+# or the runtime tree.
+
+if "$BIN" $FLAGS init; then
+  echo "init as non-root: accepted (FAILED)"
+else
+  echo "init as non-root: rejected (ok)"
+fi

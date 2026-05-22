@@ -1,0 +1,29 @@
+#!/bin/sh
+# Verify that re-running `oo up` on a namespace whose daemon has died cleans up
+# the stale state and brings a fresh daemon up. Killing the inner daemon makes
+# the monitor exit, leaving stale on-disk state for the next up to adopt.
+
+NS="sa"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 300
+CHILD_PID=$(grep '^child_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+kill -9 "$CHILD_PID" 2>/dev/null
+sleep 1
+
+if "$BIN" $FLAGS up "$NS" -- sleep 30; then
+  echo "re-up over stale namespace (ok)"
+else
+  echo "re-up over stale namespace (FAILED)"
+fi
+
+NEW_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+if test -n "$NEW_PID" && kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "fresh daemon alive (ok)"
+else
+  echo "fresh daemon alive (FAILED)"
+fi
