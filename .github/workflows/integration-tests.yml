@@ -37,7 +37,7 @@ jobs:
         run: sudo -u oouser -- make MODE=asan test
 
       - name: Run root tests
-        run: sudo make MODE=asan test-root
+        run: sudo make MODE=asan test
 
       - name: Upload logs on failure
         if: failure()
@@ -47,6 +47,8 @@ jobs:
           path: |
             test/trace.log
             test/failed.diff
+            test/root/trace.log
+            test/root/failed.diff
           if-no-files-found: ignore
 
       - name: Summary on failure
@@ -54,16 +56,18 @@ jobs:
         shell: sh
         run: |
           {
-            if test -s test/failed.diff; then
-              echo '### failed.diff'
-              echo '```diff'
-              cat test/failed.diff
-              echo '```'
-            fi
-            if test -s test/trace.log; then
-              echo '### trace.log'
-              echo '```log'
-              cat test/trace.log
-              echo '```'
-            fi
+            for d in test test/root; do
+              if test -s "$d/failed.diff"; then
+                echo "### $d/failed.diff"
+                echo '```diff'
+                cat "$d/failed.diff"
+                echo '```'
+              fi
+              if test -s "$d/trace.log"; then
+                echo "### $d/trace.log"
+                echo '```log'
+                cat "$d/trace.log"
+                echo '```'
+              fi
+            done
           } >> "$GITHUB_STEP_SUMMARY"
