@@ -24,6 +24,78 @@ namespace {
 constexpr usize MAX_HEAD_BYTES = 65536;
 constexpr usize RELAY_BUF_BYTES = 16384;
 
+// How often the idle accept loop wakes to check that the namespace daemon is
+// still alive.
+constexpr int WATCH_TIMEOUT_MS = 2000;
+
+// Accept only clients inside the oo address range 10.0.0.0/16. The host reaches
+// the namespace proxy over the veth with a source in this range, so this keeps
+// the proxy from relaying for peers on any other interface it might be bound
+// to. It mirrors the squid backend's `acl src 10.0.0.0/16`.
+fn client_allowed(const struct sockaddr_in &peer) -> bool {
+  if (peer.sin_family != AF_INET) {
+    return false;
+  }
+  const u32 addr = ntohl(peer.sin_addr.s_addr);
+  return (addr & 0xFFFF0000u) == 0x0A000000u;
+}
+
+// True for an IPv4 127.0.0.0/8 or IPv6 ::1 destination. Refusing these stops
+// the proxy from being used to reach services bound only to the namespace
+// loopback.
+fn is_loopback(const struct addrinfo *ai) -> bool {
+  if (ai->ai_family == AF_INET) {
+    const let *sin = reinterpret_cast<const struct sockaddr_in *>(ai->ai_addr);
+    return (ntohl(sin->sin_addr.s_addr) & 0xFF000000u) == 0x7F000000u;
+  }
+  if (ai->ai_family == AF_INET6) {
+    const let *sin6 =
+        reinterpret_cast<const struct sockaddr_in6 *>(ai->ai_addr);
+    return IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr) != 0;
+  }
+  return false;
+}
+
+// Split an authority into host and port, handling bracketed IPv6 literals such
+// as "[2001:db8::1]:443". An unbracketed authority with more than one colon is
+// treated as an IPv6 literal without a port. Returns false on a malformed value
+// or an empty host.
+fn split_host_port(const std::string &authority, std::string_view default_port,
+                   std::string &host, std::string &port) -> bool {
+  if (!authority.empty() && authority.front() == '[') {
+    const let close = authority.find(']');
+    if (close == std::string::npos) {
+      return false;
+    }
+    host = authority.substr(1, close - 1);
+    if (close + 1 == authority.size()) {
+      port = std::string{default_port};
+    } else if (authority[close + 1] == ':') {
+      port = authority.substr(close + 2);
+    } else {
+      return false;
+    }
+  } else {
+    const let first = authority.find(':');
+    const let last = authority.rfind(':');
+    if (first == std::string::npos) {
+      host = authority;
+      port = std::string{default_port};
+    } else if (first != last) {
+      host = authority;
+      port = std::string{default_port};
+    } else {
+      host = authority.substr(0, last);
+      port = authority.substr(last + 1);
+    }
+  }
+
+  if (port.empty()) {
+    port = std::string{default_port};
+  }
+  return !host.empty() && !port.empty();
+}
+
 fn write_all(int fd, std::string_view data) -> error_or<ok> {
   usize off = 0;
   while (off < data.size()) {
@@ -53,7 +125,12 @@ fn resolve_and_connect(const std::string &host, const std::string &port)
   }
 
   linux::oo_fd out;
+  bool saw_loopback = false;
   for (struct addrinfo *ai = res; ai != nullptr; ai = ai->ai_next) {
+    if (is_loopback(ai)) {
+      saw_loopback = true;
+      continue;
+    }
     int fd = ::socket(ai->ai_family, ai->ai_socktype | SOCK_CLOEXEC,
                       ai->ai_protocol);
     if (fd < 0) {
@@ -68,6 +145,9 @@ fn resolve_and_connect(const std::string &host, const std::string &port)
   ::freeaddrinfo(res);
 
   if (!out.is_valid()) {
+    if (saw_loopback) {
+      return make_error("Refusing to proxy to a loopback address: " + host);
+    }
     return make_error("Could not connect to " + host + ":" + port);
   }
   return out;
@@ -178,7 +258,32 @@ fn oo_proxy::run() -> error_or<ok> {
   unused(::signal(SIGPIPE, SIG_IGN));
 
   for (;;) {
-    int client = ::accept(m_listen_fd, nullptr, nullptr);
+    struct pollfd pfd = {
+        .fd = m_listen_fd.get(), .events = POLLIN, .revents = 0};
+    int ready = ::poll(&pfd, 1, WATCH_TIMEOUT_MS);
+    if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return make_error("poll() failed on proxy listener: " +
+                        linux::get_errno_string());
+    }
+
+    if (ready == 0) {
+      // Idle tick. Exit once the namespace daemon is gone so an orphaned proxy
+      // does not keep the network namespace pinned.
+      if (::kill(m_daemon_pid, 0) != 0 && errno == ESRCH) {
+        trace(verbosity::info, "Daemon {} is gone; proxy exiting",
+              m_daemon_pid);
+        return ok{};
+      }
+      continue;
+    }
+
+    struct sockaddr_in peer{};
+    socklen_t peer_len = sizeof(peer);
+    int client = ::accept(
+        m_listen_fd, reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
     if (client < 0) {
       if (errno == EINTR || errno == ECONNABORTED) {
         continue;
@@ -187,6 +292,11 @@ fn oo_proxy::run() -> error_or<ok> {
     }
 
     linux::oo_fd client_fd{client};
+
+    if (!client_allowed(peer)) {
+      // Source outside the oo address range. Drop it; oo_fd closes the socket.
+      continue;
+    }
 
     let pid = linux::oo_fork();
     if (pid.is_err()) {
@@ -242,12 +352,11 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
   const std::string version = request_line.substr(sp2 + 1);
 
   if (method == "CONNECT") {
-    let colon = target.rfind(':');
-    if (colon == std::string::npos) {
+    std::string host;
+    std::string port;
+    if (!split_host_port(target, "", host, port)) {
       return make_error("CONNECT target must be host:port: " + target);
     }
-    const std::string host = target.substr(0, colon);
-    const std::string port = target.substr(colon + 1);
 
     let upstream = unwrap(resolve_and_connect(host, port));
     unwrap(write_all(client, "HTTP/1.1 200 Connection Established\r\n\r\n"));
@@ -268,13 +377,9 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
   const std::string path =
       slash == std::string::npos ? "/" : rest.substr(slash);
 
-  std::string host = authority;
-  std::string port = "80";
-  if (let colon = authority.rfind(':'); colon != std::string::npos) {
-    host = authority.substr(0, colon);
-    port = authority.substr(colon + 1);
-  }
-  if (host.empty()) {
+  std::string host;
+  std::string port;
+  if (!split_host_port(authority, "80", host, port)) {
     return make_error("Proxy request is missing a host: " + target);
   }
 

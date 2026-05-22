@@ -84,6 +84,9 @@ public:
   [[nodiscard]] fn setup_forward(std::string_view host_iface)
       -> error_or<ok> override;
   [[nodiscard]] fn cleanup() -> error_or<ok> override;
+
+private:
+  [[nodiscard]] fn table_name() -> std::string;
 };
 
 // Facade that selects an available backend at construction and forwards

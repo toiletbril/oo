@@ -408,7 +408,10 @@ static fn wrap_text(std::string_view text, usize width, usize indent)
       result += '\n' + indent_str;
     }
 
-    usize line_len = std::min(width - indent, text.length() - pos);
+    // Guard the unsigned subtraction: a flag name wide enough to push indent
+    // past width would otherwise wrap around to a huge line length.
+    usize avail = width > indent ? width - indent : 1;
+    usize line_len = std::min(avail, text.length() - pos);
     if (pos + line_len < text.length()) {
       usize last_space = text.rfind(' ', pos + line_len);
       if (last_space != std::string_view::npos && last_space > pos) {

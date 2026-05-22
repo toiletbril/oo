@@ -71,7 +71,10 @@ fn down(cli::cli &&cli) -> error_or<ok> {
                                               s.get_daemon_start_time())) {
       trace(verbosity::info, "Sending SIGTERM to daemon PID {}",
             s.get_daemon_pid());
-      unwrap(linux::oo_kill(s.get_daemon_pid(), SIGTERM));
+      // Best effort: a kill error (a race where the daemon already exited, or
+      // a transient errno) must not abort teardown, or the veth, NAT rules,
+      // namespace directory, and subnet would leak.
+      unused(linux::oo_kill(s.get_daemon_pid(), SIGTERM));
 
       let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
       for (usize i = 0; i < iterations; ++i) {
@@ -86,7 +89,7 @@ fn down(cli::cli &&cli) -> error_or<ok> {
       if (pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
                                                 s.get_daemon_start_time())) {
         trace(verbosity::error, "Daemon did not terminate, sending SIGKILL");
-        unwrap(linux::oo_kill(s.get_daemon_pid(), SIGKILL));
+        unused(linux::oo_kill(s.get_daemon_pid(), SIGKILL));
         unwrap(linux::oo_sleep_ms(constants::FORCEFUL_SHUTDOWN_SLEEP_MS));
       }
     } else {
@@ -102,7 +105,7 @@ fn down(cli::cli &&cli) -> error_or<ok> {
                                             s.get_proxy_start_time())) {
     trace(verbosity::info, "Sending SIGTERM to proxy PID {}",
           s.get_proxy_pid());
-    unwrap(linux::oo_kill(s.get_proxy_pid(), SIGTERM));
+    unused(linux::oo_kill(s.get_proxy_pid(), SIGTERM));
 
     let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
     for (usize i = 0; i < iterations; ++i) {
@@ -116,7 +119,7 @@ fn down(cli::cli &&cli) -> error_or<ok> {
     if (pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
                                               s.get_proxy_start_time())) {
       trace(verbosity::error, "Proxy did not terminate, sending SIGKILL");
-      unwrap(linux::oo_kill(s.get_proxy_pid(), SIGKILL));
+      unused(linux::oo_kill(s.get_proxy_pid(), SIGKILL));
     }
   }
 

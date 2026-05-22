@@ -159,17 +159,21 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   let netconf = network_configurator{ns, subnet};
 
-  // Create the namespace directory before the first host-visible mutation
-  // so the netfilter cleanup log has a home to land in. Rule insertion in
-  // initial_setup() persists cleanup intent to this directory.
-  unwrap(ns.create_dir());
-
   cleanup_guard guard{};
 
+  // Arm the subnet release before the first fallible step below. allocate()
+  // marks ip-pool.ini dirty in memory and the ip_pool destructor flushes it,
+  // so without this guard a failure before teardown would persist the
+  // allocation with no matching free() and slowly exhaust the pool.
   guard.add_cleanup([&ns, &netconf, &pool, &subnet]() {
     unused(ns.reset(netconf));
     unused(pool.free(subnet));
   });
+
+  // Create the namespace directory before the first host-visible mutation
+  // so the netfilter cleanup log has a home to land in. Rule insertion in
+  // initial_setup() persists cleanup intent to this directory.
+  unwrap(ns.create_dir());
 
   guard.add_cleanup([&netconf]() { unused(netconf.cleanup()); });
   // Call below creates network devices. Arm cleanup before the call.
@@ -201,8 +205,11 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
 
   pid_t daemon_pid = -1;
-  guard.add_cleanup(
-      [&daemon_pid]() { unused(linux::oo_kill(daemon_pid, SIGKILL)); });
+  guard.add_cleanup([&daemon_pid]() {
+    if (daemon_pid > 0) {
+      unused(linux::oo_kill(daemon_pid, SIGKILL));
+    }
+  });
 
   satan s{ns, pw};
   daemon_pid =

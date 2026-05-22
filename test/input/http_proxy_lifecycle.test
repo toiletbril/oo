@@ -1,0 +1,34 @@
+#!/bin/sh
+# Verify that --http-proxy starts a proxy process recorded in pids.ini, that
+# the process is alive while the namespace is up, and that down stops it.
+
+NS="hl"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:18080 -- sleep 30
+
+PROXY_PID=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+if [ -n "$PROXY_PID" ] && [ "$PROXY_PID" -gt 0 ] 2>/dev/null; then
+  echo "proxy pid recorded: ok"
+else
+  echo "proxy pid recorded: FAILED ($PROXY_PID)"
+fi
+
+if kill -0 "$PROXY_PID" 2>/dev/null; then
+  echo "proxy alive: ok"
+else
+  echo "proxy alive: FAILED"
+fi
+
+"$BIN" $FLAGS down "$NS"
+sleep 1
+
+if kill -0 "$PROXY_PID" 2>/dev/null; then
+  echo "proxy stopped: FAILED (still alive)"
+else
+  echo "proxy stopped: ok"
+fi

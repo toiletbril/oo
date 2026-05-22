@@ -1,0 +1,33 @@
+#!/bin/sh
+# Verify that invalid --http-proxy and --http-proxy-backend values are rejected
+# before any namespace state is created. Errors go to stderr (captured to
+# trace.log by the Makefile); each case prints an ok/FAILED line to stdout
+# based on exit status.
+
+NS="hx"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+check_rejected() {
+  label=$1
+  shift
+  if "$BIN" $FLAGS up "$@"; then
+    echo "$label: accepted (FAILED)"
+  else
+    echo "$label: rejected (ok)"
+  fi
+}
+
+# Address without a port.
+check_rejected "noport"     "$NS" --http-proxy=nope -- sleep 0
+
+# Port out of range.
+check_rejected "bigport"    "$NS" --http-proxy=0.0.0.0:99999 -- sleep 0
+
+# Unknown backend.
+check_rejected "badbackend" "$NS" --http-proxy=0.0.0.0:8080 --http-proxy-backend=bogus -- sleep 0
+
+# Backend without the proxy flag.
+check_rejected "nobackend"  "$NS" --http-proxy-backend=builtin -- sleep 0

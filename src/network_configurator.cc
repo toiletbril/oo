@@ -5,12 +5,32 @@
 #include "ini.hh"
 #include "linux_util.hh"
 
+#include <cerrno>
+#include <cstdlib>
 #include <fcntl.h>
 #include <fstream>
 #include <sched.h>
 #include <sstream>
 
 namespace oo {
+
+namespace {
+// Parse an unsigned decimal field from network.ini. The build uses
+// -fno-exceptions, so std::stoul on a corrupt value would terminate the
+// process; this returns an error so load() and the down/sweep paths fail
+// cleanly instead.
+fn parse_u64_field(std::string_view name, const std::string &value)
+    -> error_or<u64> {
+  char *end = nullptr;
+  errno = 0;
+  unsigned long long parsed = strtoull(value.c_str(), &end, 10);
+  if (end == value.c_str() || *end != '\0' || errno != 0) {
+    return make_error("Corrupt value for '" + std::string{name} +
+                      "' in network file: " + value);
+  }
+  return static_cast<u64>(parsed);
+}
+} // namespace
 
 network_configurator::network_configurator(linux_namespace &ns, subnet s)
     : m_ns(ns), m_subnet(s), m_netlinker(ns), m_netfilterer(ns) {}
@@ -207,10 +227,19 @@ fn network_configurator::load() -> error_or<ok> {
   std::string veth_host;
 
   if (let v = file.find("subnet_octet")) {
-    subnet_octet = static_cast<u8>(std::stoul(*v));
+    let parsed = unwrap(parse_u64_field("subnet_octet", *v));
+    if (parsed > 255) {
+      return make_error("subnet_octet out of range in network file: " + *v);
+    }
+    subnet_octet = static_cast<u8>(parsed);
   }
   if (let v = file.find("subnet_prefix")) {
-    subnet_prefix = static_cast<u8>(std::stoul(*v));
+    let parsed = unwrap(parse_u64_field("subnet_prefix", *v));
+    if (parsed < constants::MIN_SUBNET_PREFIX_LEN ||
+        parsed > constants::MAX_SUBNET_PREFIX_LEN) {
+      return make_error("subnet_prefix out of range in network file: " + *v);
+    }
+    subnet_prefix = static_cast<u8>(parsed);
   }
   if (let v = file.find("veth_host")) {
     veth_host = *v;

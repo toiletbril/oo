@@ -11,14 +11,34 @@
 #include "privilege_drop.hh"
 #include "proxy.hh"
 
+#include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <sched.h>
 #include <sys/wait.h>
 
 namespace oo {
+
+namespace {
+// Parse an unsigned decimal field read from a state file or the daemon status
+// pipe. The build runs with -fno-exceptions, so std::stoull on a corrupt value
+// would terminate the process. This returns an error instead, which lets load()
+// and the spawn handshake fail cleanly on a truncated or garbled file.
+fn parse_u64_field(std::string_view name, const std::string &value)
+    -> error_or<u64> {
+  char *end = nullptr;
+  errno = 0;
+  unsigned long long parsed = strtoull(value.c_str(), &end, 10);
+  if (end == value.c_str() || *end != '\0' || errno != 0) {
+    return make_error("Corrupt value for '" + std::string{name} +
+                      "' in state file: " + value);
+  }
+  return static_cast<u64>(parsed);
+}
+} // namespace
 
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view start_cwd,
@@ -253,8 +273,13 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   insist(msg.starts_with(constants::DAEMON_MSG_OK));
   insist(msg.size() > constants::DAEMON_MSG_OK.size(),
          "DAEMON_MSG_OK prefix must be followed by a PID. Fuck you");
+  std::string pid_str{msg.substr(constants::DAEMON_MSG_OK.size())};
+  while (!pid_str.empty() &&
+         (pid_str.back() == '\n' || pid_str.back() == '\r')) {
+    pid_str.pop_back();
+  }
   m_child_pid =
-      std::stoi(std::string{msg.substr(constants::DAEMON_MSG_OK.size())});
+      static_cast<pid_t>(unwrap(parse_u64_field("daemon pid", pid_str)));
 
   trace(verbosity::info, "Daemon spawned successfully, PID: {}", child_pid);
 
@@ -341,7 +366,7 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
 
       unwrap(enter_namespace(m_daemon_pid, m_child_pid));
 
-      let p = make_proxy(kind, m_ns);
+      let p = make_proxy(kind, m_ns, m_daemon_pid);
 
       linux::set_process_name("oo proxy " + std::string{p->name()} + " " +
                               bind.to_string() + " " + m_ns.get_name());
@@ -451,15 +476,16 @@ fn satan::load() -> error_or<ok> {
 
   if (let v = file.find("daemon_pid")) {
     insist(!v->empty(), "daemon_pid entry must have a non-empty value");
-    m_daemon_pid = std::stoi(*v);
+    m_daemon_pid =
+        static_cast<pid_t>(unwrap(parse_u64_field("daemon_pid", *v)));
   }
   if (let v = file.find("child_pid")) {
     insist(!v->empty(), "child_pid entry must have a non-empty value");
-    m_child_pid = std::stoi(*v);
+    m_child_pid = static_cast<pid_t>(unwrap(parse_u64_field("child_pid", *v)));
   }
   if (let v = file.find("daemon_start_time")) {
     insist(!v->empty(), "daemon_start_time entry must have a non-empty value");
-    m_daemon_start_time = std::stoull(*v);
+    m_daemon_start_time = unwrap(parse_u64_field("daemon_start_time", *v));
   }
   if (let v = file.find("dns_on_monitor")) {
     insist(!v->empty(), "dns_on_monitor entry must have a non-empty value");
@@ -467,11 +493,11 @@ fn satan::load() -> error_or<ok> {
   }
   if (let v = file.find("proxy_pid")) {
     insist(!v->empty(), "proxy_pid entry must have a non-empty value");
-    m_proxy_pid = std::stoi(*v);
+    m_proxy_pid = static_cast<pid_t>(unwrap(parse_u64_field("proxy_pid", *v)));
   }
   if (let v = file.find("proxy_start_time")) {
     insist(!v->empty(), "proxy_start_time entry must have a non-empty value");
-    m_proxy_start_time = std::stoull(*v);
+    m_proxy_start_time = unwrap(parse_u64_field("proxy_start_time", *v));
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());

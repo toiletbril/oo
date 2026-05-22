@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 
 namespace oo {
 
@@ -49,7 +50,10 @@ protected:
   proxy() = default;
 };
 
-[[nodiscard]] fn make_proxy(proxy_backend_kind kind, linux_namespace &ns)
-    -> std::unique_ptr<proxy>;
+// `daemon_pid` is the namespace daemon the proxy lives alongside. The built-in
+// backend watches it and exits when it dies so the network namespace is not
+// pinned by an orphaned proxy.
+[[nodiscard]] fn make_proxy(proxy_backend_kind kind, linux_namespace &ns,
+                            pid_t daemon_pid) -> std::unique_ptr<proxy>;
 
 } // namespace oo

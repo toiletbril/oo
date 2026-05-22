@@ -219,17 +219,33 @@ fn iptables_legacy_backend::cleanup() -> error_or<ok> {
   return ok{};
 }
 
+fn nftables_backend::table_name() -> std::string {
+  // The namespace name is validated (short and alphanumeric), so it is a safe
+  // nftables identifier component.
+  return "oo_" + m_ns.get_name();
+}
+
 fn nftables_backend::setup_nat(std::string_view host_iface,
                                std::string_view subnet) -> error_or<ok> {
   trace_variables(verbosity::all, host_iface, subnet);
   const std::string subnet_str{subnet};
   const std::string iface_str{host_iface};
+  const std::string table = table_name();
 
-  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", "nat",
+  // Own a per-namespace table so cleanup is a single `delete table`, which
+  // removes every chain and rule below atomically. Persist that teardown
+  // before creating anything so a crash mid-setup still has a recorded
+  // cleanup. setup_nat runs before setup_forward, so this is the only persist.
+  unwrap(persist_cleanup({m_backend_path, "delete", "table", "ip", table}));
+
+  unwrap(run_privileged({m_backend_path, "add", "table", "ip", table}));
+  unwrap(run_privileged({m_backend_path, "add", "chain", "ip", table,
+                         "postrouting", "{", "type", "nat", "hook",
+                         "postrouting", "priority", "100", ";", "}"}));
+  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", table,
                          "postrouting", "oifname", iface_str, "ip", "saddr",
                          subnet_str, "masquerade"}));
 
-  // Nftables requires rule handles for precise deletion.
   trace(verbosity::info, "Setup NAT for {} via {} (nftables)", subnet,
         host_iface);
 
@@ -240,11 +256,15 @@ fn nftables_backend::setup_forward(std::string_view host_iface)
     -> error_or<ok> {
   trace_variables(verbosity::all, host_iface);
   const std::string iface_str{host_iface};
+  const std::string table = table_name();
 
-  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", "filter",
-                         "forward", "iifname", iface_str, "accept"}));
-  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", "filter",
-                         "forward", "oifname", iface_str, "accept"}));
+  unwrap(run_privileged({m_backend_path, "add", "chain", "ip", table, "forward",
+                         "{", "type", "filter", "hook", "forward", "priority",
+                         "0", ";", "}"}));
+  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", table, "forward",
+                         "iifname", iface_str, "accept"}));
+  unwrap(run_privileged({m_backend_path, "add", "rule", "ip", table, "forward",
+                         "oifname", iface_str, "accept"}));
 
   trace(verbosity::info, "Setup FORWARD rules for {} (nftables)", host_iface);
 
@@ -256,14 +276,29 @@ fn nftables_backend::cleanup() -> error_or<ok> {
     return ok{};
   }
 
-  // Nftables rule-handle tracking is not implemented. Any rule inserted
-  // by setup_nat or setup_forward remains on the host. This is a known
-  // asymmetry against iptables_legacy_backend; prefer iptables-legacy
-  // until an nft parser for `nft -a list ruleset` lands here.
-  trace(verbosity::error,
-        "WARNING: nftables backend cannot clean up its rules; inspect with "
-        "`nft list ruleset` and remove manually");
+  // Reconcile against on-disk state; the log is authoritative after a crash.
+  if (let r = load_persisted_cleanups(); !r.is_err()) {
+    m_cleanup_cmds = r.get_value();
+  } else {
+    trace(verbosity::error, "Failed to load persisted netfilter log: {}",
+          r.get_error().get_reason());
+  }
+
+  // Each persisted argv is a `nft delete table ...` built from internal state.
+  // A delete of a table that was never created errors out; that is logged and
+  // ignored, matching the iptables backend.
+  for (const let &argv : m_cleanup_cmds) {
+    if (argv.empty())
+      continue;
+    if (let r = run_privileged(argv); r.is_err()) {
+      trace(verbosity::error, "Cleanup command failed: {}",
+            r.get_error().get_reason());
+    }
+  }
+
+  trace(verbosity::debug, "Cleaned up nftables rules");
   m_cleanup_cmds.clear();
+  remove_persisted_cleanups();
   m_cleaned_up = true;
 
   return ok{};

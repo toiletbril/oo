@@ -4,12 +4,49 @@
 #include "debug.hh"
 #include "linux_util.hh"
 
+#include <arpa/inet.h>
 #include <filesystem>
 #include <fstream>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 namespace oo {
+
+namespace {
+// squid binds its own listener after privileges are dropped, so unlike the
+// built-in backend it never binds while privileged. A throwaway bind here, run
+// while still privileged, confirms the address and port are usable so a
+// conflict surfaces through the spawn handshake instead of squid dying after
+// the parent already reported success.
+fn bind_test(const endpoint &bind) -> error_or<ok> {
+  int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) {
+    return make_error("Could not create probe socket: " +
+                      linux::get_errno_string());
+  }
+  linux::oo_fd probe{fd};
+
+  int one = 1;
+  unused(::setsockopt(probe, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)));
+
+  struct sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(bind.port);
+  if (inet_pton(AF_INET, bind.host.c_str(), &addr.sin_addr) != 1) {
+    return make_error("Invalid proxy bind host: " + bind.host);
+  }
+
+  if (::bind(probe, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) !=
+      0) {
+    return make_error("Could not bind squid to " + bind.to_string() + ": " +
+                      linux::get_errno_string());
+  }
+
+  return ok{};
+}
+} // namespace
 
 fn squid_proxy::find_squid() -> error_or<std::string> {
   const std::string_view candidates[] = {
@@ -31,6 +68,16 @@ fn squid_proxy::find_squid() -> error_or<std::string> {
 
 fn squid_proxy::prepare(const endpoint &bind) -> error_or<ok> {
   m_squid_path = unwrap(find_squid());
+
+  // squid binds the port as the invoking user after the privilege drop, so it
+  // cannot take a privileged port. Reject those up front rather than letting
+  // squid fail after the readiness handshake has reported success.
+  if (bind.port < 1024) {
+    return make_error("squid backend cannot bind privileged ports (< 1024); "
+                      "use a port >= 1024 or --http-proxy-backend=builtin");
+  }
+
+  unwrap(bind_test(bind));
 
   let ns_path = unwrap(m_ns.get_path());
   let config_path = ns_path / "squid.conf";

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Verify that the built-in proxy forwards an absolute-form HTTP request out of
+# the namespace. A small server runs on the host and listens on the gateway
+# (veth host) address, and the host fetches it through the namespace proxy. A
+# numeric target keeps the test independent of DNS and the public internet.
+
+NS="hf"
+PROXY_PORT=18080
+SRV_PORT=18081
+
+SRV_PID=""
+WORKDIR=""
+cleanup() {
+  "$BIN" $FLAGS down "$NS" || true
+  [ -n "$SRV_PID" ] && kill "$SRV_PID" 2>/dev/null
+  [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"
+  true
+}
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:$PROXY_PORT -- sleep 30
+
+OCTET=$(grep '^subnet_octet=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)
+HOST_IP="10.0.${OCTET}.1"
+NS_IP="10.0.${OCTET}.2"
+
+WORKDIR=$(mktemp -d)
+printf 'PROXY_OK' > "$WORKDIR/probe"
+( cd "$WORKDIR" && python3 -m http.server "$SRV_PORT" --bind 0.0.0.0 ) >/dev/null 2>&1 &
+SRV_PID=$!
+sleep 1
+
+BODY=$(curl -s --max-time 5 -x "$NS_IP:$PROXY_PORT" "http://$HOST_IP:$SRV_PORT/probe")
+
+if [ "$BODY" = "PROXY_OK" ]; then
+  echo "proxy forwarded request: ok"
+else
+  echo "proxy forwarded request: FAILED ($BODY)"
+fi

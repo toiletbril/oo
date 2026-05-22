@@ -117,6 +117,11 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
   unused(oo_linux_syscall(setenv, "LANG", "C", 1));
   unused(oo_linux_syscall(setenv, "LC_ALL", "C", 1));
 
+  // oo ignores SIGPIPE process-wide (see main), and SIG_IGN survives execve.
+  // Restore the default so the exec'd program gets normal SIGPIPE behavior
+  // rather than silently inheriting oo's ignore disposition.
+  unused(::signal(SIGPIPE, SIG_DFL));
+
   let ret = oo_linux_syscall(::execvp, os_args[0],
                              const_cast<char *const *>(os_args.data()));
   insist(ret.is_err());

@@ -18,9 +18,12 @@ dominatrix::dominatrix(linux_namespace &ns) : m_ns(ns) {}
 
 fn dominatrix::is_ip_address(std::string_view s) -> bool {
   trace_variables(verbosity::all, s);
+  // inet_pton reads a NUL-terminated C string. A string_view is not guaranteed
+  // to be terminated at its end, so copy into a std::string before passing it.
+  const std::string str{s};
   struct sockaddr_in sa;
-  return inet_pton(AF_INET, s.data(), &(sa.sin_addr)) == 1 ||
-         inet_pton(AF_INET6, s.data(), &(sa.sin_addr)) == 1;
+  return inet_pton(AF_INET, str.c_str(), &(sa.sin_addr)) == 1 ||
+         inet_pton(AF_INET6, str.c_str(), &(sa.sin_addr)) == 1;
 }
 
 fn dominatrix::set_dns_servers(const std::vector<std::string> &dns_servers)

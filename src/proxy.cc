@@ -58,11 +58,11 @@ fn parse_proxy_backend(std::string_view name) -> error_or<proxy_backend_kind> {
                     "'. Valid backends are 'builtin' and 'squid'.");
 }
 
-fn make_proxy(proxy_backend_kind kind, linux_namespace &ns)
+fn make_proxy(proxy_backend_kind kind, linux_namespace &ns, pid_t daemon_pid)
     -> std::unique_ptr<proxy> {
   switch (kind) {
   case proxy_backend_kind::builtin:
-    return std::make_unique<oo_proxy>(ns);
+    return std::make_unique<oo_proxy>(ns, daemon_pid);
   case proxy_backend_kind::squid:
     return std::make_unique<squid_proxy>(ns);
   }
