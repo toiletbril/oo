@@ -113,9 +113,17 @@ dirs: $(DIRS)
 oo: dirs
 	$(MAKE) $(OUT)
 
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+
 install: oo
-	install -m 755 $(OUT) /usr/local/bin/oo
-	echo "Installed in '/usr/local/bin/oo'."
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 $(OUT) $(DESTDIR)$(BINDIR)/oo
+	echo "Installed in '$(DESTDIR)$(BINDIR)/oo'."
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/oo
+	echo "Removed '$(DESTDIR)$(BINDIR)/oo'."
 
 CLANG_TIDY ?= clang-tidy
 
@@ -133,4 +141,4 @@ clean:
 	rm -rf ./o ../oo ../oo.exe
 	rm -rf ../perf*
 
-.PHONY: dirs oo install tidy fmt clean
+.PHONY: dirs oo install uninstall tidy fmt clean

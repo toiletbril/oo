@@ -9,6 +9,7 @@
 #include "netlinker.hh"
 #include "pid_tracker.hh"
 #include "privilege_drop.hh"
+#include "proxy.hh"
 
 #include <chrono>
 #include <csignal>
@@ -22,7 +23,8 @@ namespace oo {
 fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
                        std::string_view start_cwd,
                        std::string_view resolv_conf_path,
-                       std::string_view nsswitch_conf_path) -> error_or<pid_t> {
+                       std::string_view nsswitch_conf_path, bool dns_on_monitor)
+    -> error_or<pid_t> {
   insist(!daemonized_argv.empty(),
          "spawn_daemon requires at least one argv element for execvp");
   insist(!daemonized_argv[0].empty(),
@@ -39,9 +41,9 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   trace(verbosity::debug, "Forking parent process");
   let child_pid = unwrap(linux::oo_fork());
 
-  let start_daemon =
-      [this, &daemonized_argv, start_cwd, resolv_conf_path,
-       nsswitch_conf_path](linux_namespace &ns) -> error_or<pid_t> {
+  let start_daemon = [this, &daemonized_argv, start_cwd, resolv_conf_path,
+                      nsswitch_conf_path,
+                      dns_on_monitor](linux_namespace &ns) -> error_or<pid_t> {
     unwrap(ns.unshare());
     trace(verbosity::debug, "Creating new session");
     unwrap(linux::oo_setsid());
@@ -65,23 +67,30 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
       return child_pid;
     }
 
-    trace(verbosity::debug, "Unsharing mount namespace");
-    unwrap(linux::oo_unshare(CLONE_NEWNS));
+    linux::set_process_name("oo " + ns.get_name() + " daemon");
 
-    if (!resolv_conf_path.empty() || !nsswitch_conf_path.empty()) {
-      mountain mnt(ns);
-      unwrap(mnt.make_root_private());
+    // With dns_on_monitor the daemon keeps the host's /etc/resolv.conf. The
+    // monitor process applies the bind mounts in its own mount ns instead,
+    // so it does not unshare CLONE_NEWNS here either.
+    if (!dns_on_monitor) {
+      trace(verbosity::debug, "Unsharing mount namespace");
+      unwrap(linux::oo_unshare(CLONE_NEWNS));
 
-      if (!resolv_conf_path.empty()) {
-        trace(verbosity::debug, "Bind mounting resolv.conf");
-        unwrap(mnt.bind_mount(std::string{resolv_conf_path},
-                              std::string{"/etc/resolv.conf"}));
-      }
+      if (!resolv_conf_path.empty() || !nsswitch_conf_path.empty()) {
+        mountain mnt(ns);
+        unwrap(mnt.make_root_private());
 
-      if (!nsswitch_conf_path.empty()) {
-        trace(verbosity::debug, "Bind mounting nsswitch.conf");
-        unwrap(mnt.bind_mount(std::string{nsswitch_conf_path},
-                              std::string{"/etc/nsswitch.conf"}));
+        if (!resolv_conf_path.empty()) {
+          trace(verbosity::debug, "Bind mounting resolv.conf");
+          unwrap(mnt.bind_mount(std::string{resolv_conf_path},
+                                std::string{"/etc/resolv.conf"}));
+        }
+
+        if (!nsswitch_conf_path.empty()) {
+          trace(verbosity::debug, "Bind mounting nsswitch.conf");
+          unwrap(mnt.bind_mount(std::string{nsswitch_conf_path},
+                                std::string{"/etc/nsswitch.conf"}));
+        }
       }
     }
 
@@ -134,6 +143,8 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
     unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
 
+    linux::set_process_name("oo " + m_ns.get_name() + " child forker");
+
     pipe_rd.reset(-1);
     let ret = start_daemon(m_ns);
     if (ret.is_err()) {
@@ -148,6 +159,40 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     insist(!ret.is_err(), "daemon_pid extraction requires the success branch");
     let daemon_pid = ret.get_value();
     insist(daemon_pid > 0, "start_daemon must return a valid child PID");
+
+    // The daemon was forked before this point, so it does not inherit the
+    // mount ns set up here. Bind the DNS config in the monitor's own mount
+    // ns so `oo exec` (which joins the monitor's mnt ns) resolves through
+    // it while the daemon keeps the host resolv.conf. Done while still
+    // privileged, before the su()/drop below.
+    if (dns_on_monitor) {
+      let setup = [&]() -> error_or<ok> {
+        unwrap(linux::oo_unshare(CLONE_NEWNS));
+        if (!resolv_conf_path.empty() || !nsswitch_conf_path.empty()) {
+          mountain mnt(m_ns);
+          unwrap(mnt.make_root_private());
+          if (!resolv_conf_path.empty()) {
+            unwrap(mnt.bind_mount(std::string{resolv_conf_path},
+                                  std::string{"/etc/resolv.conf"}));
+          }
+          if (!nsswitch_conf_path.empty()) {
+            unwrap(mnt.bind_mount(std::string{nsswitch_conf_path},
+                                  std::string{"/etc/nsswitch.conf"}));
+          }
+        }
+        return ok{};
+      }();
+
+      if (setup.is_err()) {
+        let err_text = setup.get_error().get_owned_reason();
+        unused(linux::oo_kill(daemon_pid, SIGKILL));
+        unused(linux::oo_write(pipe_wr, constants::DAEMON_MSG_ERR.data(),
+                               constants::DAEMON_MSG_ERR.size()));
+        unused(linux::oo_write(pipe_wr, err_text.data(), err_text.length()));
+        pipe_wr.reset(-1);
+        exit(EXIT_FAILURE);
+      }
+    }
 
     // SECURITY: Namespace setup is complete; monitoring process only waits.
     // Switch back to the invoking user so `ps` shows the monitor under
@@ -221,8 +266,12 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
   let net_ns_path = "/proc/" + std::to_string(daemon_pid) + "/ns/net";
   linux::oo_fd net_fd{unwrap(linux::oo_open(net_ns_path.c_str(), O_RDONLY))};
 
-  // inner_pid unshared CLONE_NEWNS and applied bind mounts; daemon_pid did not.
-  let mnt_pid = inner_pid != 0 ? inner_pid : daemon_pid;
+  // inner_pid unshared CLONE_NEWNS and applied bind mounts; daemon_pid did
+  // not. With dns_on_monitor the binds live in the monitor's mount ns
+  // (daemon_pid here), so join that one instead of the daemon's.
+  let mnt_pid = m_dns_on_monitor ? daemon_pid
+                : inner_pid != 0 ? inner_pid
+                                 : daemon_pid;
   let mnt_ns_path = "/proc/" + std::to_string(mnt_pid) + "/ns/mnt";
   linux::oo_fd mnt_fd{unwrap(linux::oo_open(mnt_ns_path.c_str(), O_RDONLY))};
 
@@ -249,6 +298,121 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
   return ok{};
 }
 
+fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
+    -> error_or<pid_t> {
+  insist(m_daemon_pid > 0, "spawn_proxy requires a known daemon PID");
+  trace(verbosity::info, "Spawning proxy for namespace '{}'", m_ns.get_name());
+
+  let pipe = unwrap(linux::oo_pipe());
+  linux::oo_fd pipe_rd = std::move(pipe.first);
+  linux::oo_fd pipe_wr = std::move(pipe.second);
+
+  let child_pid = unwrap(linux::oo_fork());
+
+  if (child_pid == 0) {
+    struct sigaction sa{};
+    sa.sa_handler = SIG_DFL;
+    sigemptyset(&sa.sa_mask);
+    unused(oo_linux_syscall(sigaction, SIGTERM, &sa, nullptr));
+    unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
+    unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
+
+    pipe_rd.reset(-1);
+
+    let serve = [this, &bind, kind, &pipe_wr]() -> error_or<ok> {
+      unwrap(linux::oo_setsid());
+
+      if (let log_dir = m_ns.get_path(); !log_dir.is_err()) {
+        const std::string out_path =
+            (log_dir.get_value() / satan::PROXY_STDOUT_LOG).string();
+        const std::string err_path =
+            (log_dir.get_value() / satan::PROXY_STDERR_LOG).string();
+        linux::oo_fd out_fd{::open(
+            out_path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644)};
+        if (out_fd.is_valid()) {
+          unused(linux::oo_dup2(out_fd, STDOUT_FILENO));
+        }
+        linux::oo_fd err_fd{::open(
+            err_path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644)};
+        if (err_fd.is_valid()) {
+          unused(linux::oo_dup2(err_fd, STDERR_FILENO));
+        }
+      }
+
+      unwrap(enter_namespace(m_daemon_pid, m_child_pid));
+
+      let p = make_proxy(kind, m_ns);
+
+      linux::set_process_name("oo proxy " + std::string{p->name()} + " " +
+                              bind.to_string() + " " + m_ns.get_name());
+
+      // Bind while still privileged so any port works and a bind failure is
+      // reported to the parent before privileges are dropped.
+      unwrap(p->prepare(bind));
+
+      let ok_msg = std::string{constants::DAEMON_MSG_OK} +
+                   std::to_string(getpid()) + "\n";
+      unused(linux::oo_write(pipe_wr, ok_msg.data(), ok_msg.length()));
+      pipe_wr.reset(-1);
+
+      // SECURITY: drop to the invoking user and clear capabilities before the
+      // proxy starts serving. The listening socket was already created above
+      // and survives the credential change.
+      unwrap(m_pw.su());
+      unwrap(caps::drop_all_caps());
+
+      unwrap(p->run());
+      unreachable();
+    };
+
+    let ret = serve();
+    insist(ret.is_err(), "serve() must only return on error");
+    let err_text = ret.get_error().get_owned_reason();
+    unused(linux::oo_write(pipe_wr, constants::DAEMON_MSG_ERR.data(),
+                           constants::DAEMON_MSG_ERR.size()));
+    unused(linux::oo_write(pipe_wr, err_text.data(), err_text.length()));
+    pipe_wr.reset(-1);
+    exit(EXIT_FAILURE);
+  }
+
+  pipe_wr.reset(-1);
+
+  struct pollfd proxy_log = {
+      .fd = pipe_rd.get(), .events = POLLIN, .revents = 0};
+  let ret = unwrap(oo_linux_syscall(poll, &proxy_log, 1,
+                                    constants::DAEMON_SPAWN_TIMEOUT_MS));
+  insist(ret >= 0);
+
+  if (ret == 0) {
+    unused(linux::oo_kill(child_pid, SIGKILL));
+    return make_error("`poll()` timed out. No proxy was started.");
+  }
+
+  char buf[4096];
+  let n = unwrap(linux::oo_read(pipe_rd, buf, sizeof(buf) - 1));
+  pipe_rd.reset(-1);
+
+  insist(n >= 0 && static_cast<usize>(n) < sizeof(buf),
+         "read returned out-of-range length for null-termination");
+  buf[n] = '\0';
+  const std::string_view msg(buf, n);
+
+  if (msg.starts_with(constants::DAEMON_MSG_ERR)) {
+    std::string err_msg = "Proxy process failed";
+    if (msg.length() > constants::DAEMON_MSG_ERR.size()) {
+      err_msg +=
+          ": " + std::string{msg.substr(constants::DAEMON_MSG_ERR.size())};
+    }
+    unused(linux::oo_kill(child_pid, SIGKILL));
+    return make_error(err_msg);
+  }
+
+  insist(msg.starts_with(constants::DAEMON_MSG_OK));
+  trace(verbosity::info, "Proxy spawned successfully, PID: {}", child_pid);
+
+  return child_pid;
+}
+
 fn satan::save() const -> error_or<ok> {
   trace_self(verbosity::debug);
   let ns_path = unwrap(m_ns.get_path());
@@ -256,12 +420,15 @@ fn satan::save() const -> error_or<ok> {
 
   ini_file file{pid_path};
   unwrap(file.load());
-  insist(m_daemon_pid >= 0 && m_child_pid >= 0,
+  insist(m_daemon_pid >= 0 && m_child_pid >= 0 && m_proxy_pid >= 0,
          "satan::save must not persist negative PIDs");
   file.set_header("Process state");
   file.set("daemon_pid", std::to_string(m_daemon_pid));
   file.set("child_pid", std::to_string(m_child_pid));
   file.set("daemon_start_time", std::to_string(m_daemon_start_time));
+  file.set("dns_on_monitor", m_dns_on_monitor ? "1" : "0");
+  file.set("proxy_pid", std::to_string(m_proxy_pid));
+  file.set("proxy_start_time", std::to_string(m_proxy_start_time));
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
@@ -293,6 +460,18 @@ fn satan::load() -> error_or<ok> {
   if (let v = file.find("daemon_start_time")) {
     insist(!v->empty(), "daemon_start_time entry must have a non-empty value");
     m_daemon_start_time = std::stoull(*v);
+  }
+  if (let v = file.find("dns_on_monitor")) {
+    insist(!v->empty(), "dns_on_monitor entry must have a non-empty value");
+    m_dns_on_monitor = (*v == "1");
+  }
+  if (let v = file.find("proxy_pid")) {
+    insist(!v->empty(), "proxy_pid entry must have a non-empty value");
+    m_proxy_pid = std::stoi(*v);
+  }
+  if (let v = file.find("proxy_start_time")) {
+    insist(!v->empty(), "proxy_start_time entry must have a non-empty value");
+    m_proxy_start_time = std::stoull(*v);
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
@@ -331,6 +510,15 @@ fn satan::sweep_orphans() -> error_or<ok> {
 
     if (!orphan) {
       continue;
+    }
+
+    // Best effort: stop a proxy left behind by a dead daemon. This only
+    // succeeds when the sweeping process shares the proxy's uid, which is the
+    // case on the `down` path where the invoking user owns both.
+    if (probe.get_proxy_pid() > 0 &&
+        pid_tracker::is_alive_with_start_time(probe.get_proxy_pid(),
+                                              probe.get_proxy_start_time())) {
+      unused(linux::oo_kill(probe.get_proxy_pid(), SIGKILL));
     }
 
     let now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(

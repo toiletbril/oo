@@ -34,8 +34,14 @@ inline constexpr std::string_view IPTABLES_LEGACY_BIN_PATH =
 inline constexpr std::string_view NFT_SBIN_PATH = "/usr/sbin/nft";
 inline constexpr std::string_view NFT_BIN_PATH = "/sbin/nft";
 
+inline constexpr std::string_view SQUID_SBIN_PATH = "/usr/sbin/squid";
+inline constexpr std::string_view SQUID_BIN_PATH = "/sbin/squid";
+inline constexpr std::string_view SQUID_USRBIN_PATH = "/usr/bin/squid";
+
 inline constexpr std::string_view IPTABLES_LEGACY_CMD = "iptables-legacy";
 inline constexpr std::string_view NFT_CMD = "nft";
+
+inline constexpr std::string_view DEFAULT_PROXY_BACKEND = "builtin";
 
 inline constexpr std::string_view ETC_RESOLV_CONF = "/etc/resolv.conf";
 inline constexpr std::string_view ETC_NSSWITCH_CONF = "/etc/nsswitch.conf";

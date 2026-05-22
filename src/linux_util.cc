@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fcntl.h>
 #include <sys/capability.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -16,6 +17,43 @@ namespace linux {
 fn get_errno_string() -> std::string { return std::strerror(errno); }
 
 fn get_error_string(int errnum) -> std::string { return std::strerror(errnum); }
+
+namespace {
+char **g_argv_start = nullptr;
+usize g_argv_len = 0;
+} // namespace
+
+fn init_process_name(int argc, char **argv) -> void {
+  g_argv_start = nullptr;
+  g_argv_len = 0;
+  if (argc <= 0 || argv == nullptr || argv[0] == nullptr) {
+    return;
+  }
+  // argv strings are laid out contiguously. The writable span runs from
+  // argv[0] to the end of the last argv string. The environment that follows
+  // is left untouched.
+  char *last = argv[argc - 1];
+  if (last == nullptr) {
+    return;
+  }
+  g_argv_start = argv;
+  g_argv_len = static_cast<usize>(last + std::strlen(last) + 1 - argv[0]);
+}
+
+fn set_process_name(std::string_view name) -> void {
+  char comm[16];
+  usize comm_len =
+      name.size() < sizeof(comm) - 1 ? name.size() : sizeof(comm) - 1;
+  std::memcpy(comm, name.data(), comm_len);
+  comm[comm_len] = '\0';
+  unused(::prctl(PR_SET_NAME, comm));
+
+  if (g_argv_start != nullptr && g_argv_len > 1) {
+    usize n = name.size() < g_argv_len - 1 ? name.size() : g_argv_len - 1;
+    std::memcpy(g_argv_start[0], name.data(), n);
+    std::memset(g_argv_start[0] + n, 0, g_argv_len - n);
+  }
+}
 
 fn raise_capability(int cap) -> error_or<ok> {
   trace_variables(verbosity::debug, cap);

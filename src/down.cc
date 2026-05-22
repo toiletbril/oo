@@ -95,6 +95,31 @@ fn down(cli::cli &&cli) -> error_or<ok> {
     }
   }
 
+  // Stop the proxy too. It runs under the invoking user (like the daemon), so
+  // this kill must happen before the oorunner switch below.
+  if (s.get_proxy_pid() > 0 &&
+      pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
+                                            s.get_proxy_start_time())) {
+    trace(verbosity::info, "Sending SIGTERM to proxy PID {}",
+          s.get_proxy_pid());
+    unwrap(linux::oo_kill(s.get_proxy_pid(), SIGTERM));
+
+    let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
+    for (usize i = 0; i < iterations; ++i) {
+      if (!pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
+                                                 s.get_proxy_start_time())) {
+        break;
+      }
+      unwrap(linux::oo_sleep_ms(constants::GRACEFUL_SHUTDOWN_SLEEP_MS));
+    }
+
+    if (pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
+                                              s.get_proxy_start_time())) {
+      trace(verbosity::error, "Proxy did not terminate, sending SIGKILL");
+      unwrap(linux::oo_kill(s.get_proxy_pid(), SIGKILL));
+    }
+  }
+
   // SECURITY: the daemon was owned by the invoking user; the kill above had
   // to run as that same uid, so `oo.cc` deferred the oorunner switch for
   // `down`. Perform the switch now -- the remaining work (removing the

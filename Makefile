@@ -14,6 +14,10 @@ install:
 	echo Installing...
 	$(MAKE) -C src install
 
+uninstall:
+	echo Uninstalling...
+	$(MAKE) -C src uninstall
+
 tidy:
 	echo Launching '$$'CLANG_TIDY...
 	$(MAKE) -C src tidy
@@ -37,4 +41,4 @@ clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C test clean
 
-.PHONY: all oo install tidy fmt test refill_tests clean
+.PHONY: all oo install uninstall tidy fmt test refill_tests clean

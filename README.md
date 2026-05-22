@@ -64,11 +64,42 @@ $ oo up vpn --dns=1.1.1.1 --dns=8.8.8.8 -- openvpn /etc/openvpn/client.conf
 $ oo up vpn --dns-file=/etc/resolv-vpn.conf -- openvpn /etc/openvpn/client.conf
 ```
 
+To keep the daemon itself on the host's `/etc/resolv.conf` while still
+applying the configured DNS to `oo exec` commands in the namespace, add
+`--no-daemon-dns`:
+```console
+$ oo up vpn --dns=1.1.1.1 --no-daemon-dns -- openvpn /etc/openvpn/client.conf
+```
+
 To pick a non-default subnet prefix on the veth interface, use
 `--subnet-prefix` with a value between 16 and 30 (default 30). Wider prefixes
 overlap across namespaces; that is the caller's responsibility:
 ```console
 $ oo up vpn --subnet-prefix=24 -- openvpn /etc/openvpn/client.conf
+```
+
+To reach the namespace's network from the host without entering it for every
+command, start a forward proxy alongside the daemon with
+`--http-proxy=<ip>:<port>`. The proxy binds inside the namespace, so it is
+reachable from the host at the namespace IP. Every request it forwards resolves
+through the namespace's DNS and leaves through the namespace's default route and
+NAT:
+```console
+$ oo up vpn --http-proxy=0.0.0.0:8080 -- openvpn /etc/openvpn/client.conf
+oo: Namespace `vpn` is up. Daemon PID: 1234.
+oo: HTTP proxy (builtin) listening on 10.0.0.2:8080. Proxy PID: 1235.
+$ curl -x 10.0.0.2:8080 https://example.com
+```
+
+The proxy serves plain HTTP through absolute-form requests and HTTPS through the
+CONNECT method. It is open to any client that can reach the bind address, so
+keep that address on a trusted interface.
+
+To choose the proxy implementation, pass `--http-proxy-backend` with either
+`builtin`, which is the default in-process proxy, or `squid`, which runs the
+system squid and requires it to be installed:
+```console
+$ oo up vpn --http-proxy=0.0.0.0:8080 --http-proxy-backend=squid -- openvpn /etc/openvpn/client.conf
 ```
 
 To run a command inside a running namespace, use `exec`. It exits with the

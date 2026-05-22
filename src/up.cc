@@ -9,6 +9,7 @@
 #include "network_configurator.hh"
 #include "pid_tracker.hh"
 #include "privilege_drop.hh"
+#include "proxy.hh"
 #include "satan.hh"
 #include "signal_handler.hh"
 
@@ -34,6 +35,19 @@ fn up(cli::cli &&cli) -> error_or<ok> {
       "Start the daemon with cwd=/ instead of the caller's current "
       "directory. Use when the invoking cwd may disappear or is not "
       "reachable inside the namespace's mount ns.");
+  let &flag_no_daemon_dns = cli.add_flag<cli::flag_boolean>(
+      '\0', "no-daemon-dns",
+      "Run the daemon itself with the host's /etc/resolv.conf, but still "
+      "apply --dns/--dns-file to commands started with 'oo exec' in this "
+      "namespace.");
+  let &flag_http_proxy = cli.add_flag<cli::flag_string>(
+      '\0', "http-proxy",
+      "Also start an HTTP/HTTPS forward proxy in the namespace, bound to "
+      "<ip>:<port>. Reachable from the host at the namespace IP. The proxy "
+      "is open to any client that can reach that address.");
+  let &flag_proxy_backend = cli.add_flag<cli::flag_string>(
+      '\0', "http-proxy-backend",
+      "Proxy implementation for --http-proxy: 'builtin' (default) or 'squid'.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -84,6 +98,18 @@ fn up(cli::cli &&cli) -> error_or<ok> {
                         std::to_string(constants::MAX_SUBNET_PREFIX_LEN));
     }
     subnet_prefix = static_cast<u8>(parsed);
+  }
+
+  endpoint proxy_bind{};
+  proxy_backend_kind proxy_backend = proxy_backend_kind::builtin;
+  if (flag_http_proxy.is_set()) {
+    proxy_bind = unwrap(endpoint::parse(flag_http_proxy.get_value()));
+    if (flag_proxy_backend.is_set()) {
+      proxy_backend =
+          unwrap(parse_proxy_backend(flag_proxy_backend.get_value()));
+    }
+  } else if (flag_proxy_backend.is_set()) {
+    return make_error("--http-proxy-backend requires --http-proxy.");
   }
 
   passwd pw;
@@ -180,13 +206,28 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   satan s{ns, pw};
   daemon_pid =
-      unwrap(s.spawn_daemon(args, start_cwd, resolv_path, nsswitch_path));
+      unwrap(s.spawn_daemon(args, start_cwd, resolv_path, nsswitch_path,
+                            flag_no_daemon_dns.is_enabled()));
 
   s.set_daemon_start_time(unwrap(pid_tracker::read_start_time(daemon_pid)));
 
   unwrap(netconf.finish_setup(daemon_pid));
 
   s.set_daemon_pid(daemon_pid);
+  s.set_dns_on_monitor(flag_no_daemon_dns.is_enabled());
+
+  pid_t proxy_pid = -1;
+  if (flag_http_proxy.is_set()) {
+    guard.add_cleanup([&proxy_pid]() {
+      if (proxy_pid > 0) {
+        unused(linux::oo_kill(proxy_pid, SIGKILL));
+      }
+    });
+    proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend));
+    s.set_proxy_pid(proxy_pid);
+    s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
+  }
+
   unwrap(s.save());
   unwrap(netconf.save());
 
@@ -194,6 +235,14 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   cli::show_message("Namespace `" + ns.get_name() +
                     "` is up. Daemon PID: " + std::to_string(daemon_pid) + ".");
+
+  if (flag_http_proxy.is_set()) {
+    const std::string backend_name =
+        proxy_backend == proxy_backend_kind::squid ? "squid" : "builtin";
+    cli::show_message("HTTP proxy (" + backend_name + ") listening on " +
+                      subnet.ns_ip() + ":" + std::to_string(proxy_bind.port) +
+                      ". Proxy PID: " + std::to_string(proxy_pid) + ".");
+  }
 
   return ok{};
 }

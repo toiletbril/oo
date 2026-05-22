@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <system_error>
 #include <unistd.h>
@@ -21,6 +22,16 @@ using fd = int;
 [[nodiscard]] fn get_errno_string() -> std::string;
 [[nodiscard]] fn get_error_string(int errnum) -> std::string;
 [[nodiscard]] fn raise_capability(int cap) -> error_or<ok>;
+
+// Record the original argv span so set_process_name can rewrite argv[0].
+// Call once from main before argv is advanced.
+fn init_process_name(int argc, char **argv) -> void;
+
+// Set the process name shown by ps and friends. The kernel comm field is
+// capped at 15 characters; the full name is written into the argv[0] region up
+// to its original length so longer descriptions remain visible in the command
+// line.
+fn set_process_name(std::string_view name) -> void;
 
 template <typename F, typename... Args>
 [[nodiscard]] fn oo_linux_syscall_impl(const char *text, F syscall_fn,

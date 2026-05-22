@@ -9,6 +9,7 @@
 #include "linux_util.hh"
 #include "up.hh"
 
+#include <csignal>
 #include <sys/prctl.h>
 
 namespace oo {
@@ -93,6 +94,12 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
 fn main(int argc, char **argv) -> int
 {
   insist(argc >= 1);
+
+  // Ignore SIGPIPE process-wide so a peer that closes a socket or pipe early
+  // turns into an EPIPE the caller can handle rather than killing the process.
+  unused(::signal(SIGPIPE, SIG_IGN));
+
+  oo::linux::init_process_name(argc, argv);
   argc--;
   argv++;
 
