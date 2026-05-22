@@ -58,12 +58,20 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   trace(verbosity::debug, "Creating pipe for daemon communication");
   let[pipe_rd, pipe_wr] = unwrap(linux::oo_pipe());
 
+  // Second pipe carrying the daemon's exec outcome to the monitor. Its write
+  // end lives only in the daemon and is close-on-exec, so a successful exec
+  // closes it with no bytes and the monitor reads EOF. A failure before exec
+  // writes its reason here instead, before the daemon exits. The monitor sends
+  // its own OK to the caller only after this confirms exec, so the caller never
+  // sees success for a daemon that died on the way to exec.
+  let[exec_rd, exec_wr] = unwrap(linux::oo_pipe());
+
   trace(verbosity::debug, "Forking parent process");
   let child_pid = unwrap(linux::oo_fork());
 
   let start_daemon = [this, &daemonized_argv, start_cwd, resolv_conf_path,
-                      nsswitch_conf_path,
-                      dns_on_monitor](linux_namespace &ns) -> error_or<pid_t> {
+                      nsswitch_conf_path, dns_on_monitor, &exec_rd,
+                      &exec_wr](linux_namespace &ns) -> error_or<pid_t> {
     unwrap(ns.unshare());
     trace(verbosity::debug, "Creating new session");
     unwrap(linux::oo_setsid());
@@ -82,11 +90,16 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     trace(verbosity::debug, "Forking daemon process");
     let child_pid = unwrap(linux::oo_fork());
     if (child_pid != 0) {
+      // The monitor only reads the exec outcome. Closing its write end leaves
+      // the daemon as the sole writer, so the read can reach EOF on exec.
+      exec_wr.reset(-1);
       trace(verbosity::debug, "Monitoring process created, daemon PID: {}",
             child_pid);
       return child_pid;
     }
 
+    // The daemon only reports through its write end, so drop the read end.
+    exec_rd.reset(-1);
     linux::set_process_name("oo " + ns.get_name() + " daemon");
 
     // With dns_on_monitor the daemon keeps the host's /etc/resolv.conf. The
@@ -168,11 +181,12 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     pipe_rd.reset(-1);
     let ret = start_daemon(m_ns);
     if (ret.is_err()) {
+      // This runs in the daemon process, since start_daemon execs on success
+      // and never returns here. Report the pre-exec failure to the monitor
+      // through the exec pipe, which the monitor forwards to the caller.
       let err_text = ret.get_error().get_owned_reason();
-      unused(linux::oo_write(pipe_wr, constants::DAEMON_MSG_ERR.data(),
-                             constants::DAEMON_MSG_ERR.size()));
-      unused(linux::oo_write(pipe_wr, err_text.data(), err_text.length()));
-      pipe_wr.reset(-1);
+      unused(linux::oo_write(exec_wr, err_text.data(), err_text.length()));
+      exec_wr.reset(-1);
       exit(EXIT_FAILURE);
     }
 
@@ -214,6 +228,26 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
       }
     }
 
+    // Confirm the daemon reached exec before reporting success to the caller.
+    // Bytes on the exec pipe mean it failed beforehand, so forward the reason;
+    // EOF means the close-on-exec write end vanished on a clean exec.
+    {
+      char exec_buf[4096];
+      let exec_n = linux::oo_read(exec_rd, exec_buf, sizeof(exec_buf) - 1);
+      exec_rd.reset(-1);
+      if (exec_n.is_err() || exec_n.get_value() > 0) {
+        std::string reason =
+            exec_n.is_err()
+                ? std::string{"daemon exec status could not be read"}
+                : std::string{exec_buf, static_cast<usize>(exec_n.get_value())};
+        unused(linux::oo_write(pipe_wr, constants::DAEMON_MSG_ERR.data(),
+                               constants::DAEMON_MSG_ERR.size()));
+        unused(linux::oo_write(pipe_wr, reason.data(), reason.length()));
+        pipe_wr.reset(-1);
+        exit(EXIT_FAILURE);
+      }
+    }
+
     // SECURITY: Namespace setup is complete; monitoring process only waits.
     // Switch back to the invoking user so `ps` shows the monitor under
     // the human's uid (not oorunner), and clear caps so the reaper holds
@@ -242,6 +276,12 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
   }
 
   pipe_wr.reset(-1);
+
+  // The caller talks to the monitor only. Release its inherited copies of the
+  // exec pipe so it does not hold the daemon's exec confirmation open, which
+  // would keep the monitor from ever reading EOF on a clean exec.
+  exec_rd.reset(-1);
+  exec_wr.reset(-1);
 
   struct pollfd daemon_log = {
       .fd = pipe_rd.get(), .events = POLLIN, .revents = 0};
