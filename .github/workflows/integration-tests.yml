@@ -29,6 +29,12 @@ jobs:
         run: |
           sudo useradd --system --create-home --shell /bin/bash oouser
           sudo chown -R oouser:oouser $PWD
+          # The daemon drops back to oouser and chdirs into the checkout, so
+          # oouser must be able to traverse every ancestor of the workspace.
+          # Ubuntu creates the runner home as mode 0700, which would block that
+          # fresh chdir and kill the daemon before up can finish.
+          d="$PWD"
+          while [ "$d" != "/" ]; do sudo chmod o+x "$d"; d=$(dirname "$d"); done
 
       - name: Run init
         run: sudo ./oo init
