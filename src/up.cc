@@ -209,8 +209,11 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   pid_t daemon_pid = -1;
   guard.add_cleanup([&daemon_pid]() {
+    // daemon_pid leads its own process group (the monitor called setsid), so
+    // signal the group to take the actual daemon down on rollback, not just
+    // the monitor that reaps it.
     if (daemon_pid > 0) {
-      unused(linux::oo_kill(daemon_pid, SIGKILL));
+      unused(linux::oo_kill(-daemon_pid, SIGKILL));
     }
   });
 
@@ -229,8 +232,10 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   pid_t proxy_pid = -1;
   if (flag_http_proxy.is_set()) {
     guard.add_cleanup([&proxy_pid]() {
+      // The proxy is its own session leader, so signal its group to also stop
+      // any in-flight connection handlers.
       if (proxy_pid > 0) {
-        unused(linux::oo_kill(proxy_pid, SIGKILL));
+        unused(linux::oo_kill(-proxy_pid, SIGKILL));
       }
     });
     proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend));

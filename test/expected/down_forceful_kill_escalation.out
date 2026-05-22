@@ -1,0 +1,2 @@
+forceful down completed.*ok
+daemon killed after ignoring SIGTERM.*ok

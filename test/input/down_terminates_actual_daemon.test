@@ -1,0 +1,22 @@
+#!/bin/sh
+# Verify that `oo down` terminates the actual daemon process, not only the
+# monitor that reaps it. down signals the daemon's process group, which reaches
+# the exec'd program recorded as child_pid.
+
+NS="dad"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 300
+CHILD_PID=$(grep '^child_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+"$BIN" $FLAGS down "$NS"
+sleep 1
+
+if kill -0 "$CHILD_PID" 2>/dev/null; then
+  echo "daemon still alive after down (FAILED)"
+else
+  echo "daemon terminated by down (ok)"
+fi

@@ -65,61 +65,63 @@ fn down(cli::cli &&cli) -> error_or<ok> {
     return make_error("Namespace '" + ns_name + "' is not running");
   }
 
-  // Graceful shutdown with timeout.
-  if (s.get_daemon_pid() > 0) {
-    if (pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                              s.get_daemon_start_time())) {
-      trace(verbosity::info, "Sending SIGTERM to daemon PID {}",
-            s.get_daemon_pid());
-      // Best effort: a kill error (a race where the daemon already exited, or
-      // a transient errno) must not abort teardown, or the veth, NAT rules,
-      // namespace directory, and subnet would leak.
-      unused(linux::oo_kill(s.get_daemon_pid(), SIGTERM));
-
-      let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
-      for (usize i = 0; i < iterations; ++i) {
-        if (!pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                                   s.get_daemon_start_time())) {
-          trace(verbosity::debug, "Daemon terminated gracefully");
-          break;
-        }
-        unwrap(linux::oo_sleep_ms(constants::GRACEFUL_SHUTDOWN_SLEEP_MS));
-      }
-
-      if (pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
-                                                s.get_daemon_start_time())) {
-        trace(verbosity::error, "Daemon did not terminate, sending SIGKILL");
-        unused(linux::oo_kill(s.get_daemon_pid(), SIGKILL));
-        unwrap(linux::oo_sleep_ms(constants::FORCEFUL_SHUTDOWN_SLEEP_MS));
-      }
-    } else {
-      trace(verbosity::error, "Daemon PID {} not running (stale)",
-            s.get_daemon_pid());
-    }
-  }
-
-  // Stop the proxy too. It runs under the invoking user (like the daemon), so
-  // this kill must happen before the oorunner switch below.
-  if (s.get_proxy_pid() > 0 &&
-      pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
-                                            s.get_proxy_start_time())) {
-    trace(verbosity::info, "Sending SIGTERM to proxy PID {}",
-          s.get_proxy_pid());
-    unused(linux::oo_kill(s.get_proxy_pid(), SIGTERM));
+  // Stopping the daemon means stopping the whole process group it leads. The
+  // monitor created a new session (setsid) before forking the daemon, so the
+  // group id equals the monitor pid recorded as daemon_pid. Signalling the
+  // group reaches the actual daemon and anything it spawned, not just the
+  // monitor that only reaps it. The start-time check still guards against pid
+  // reuse before we touch the group. Kills are best effort so a race or
+  // transient errno never aborts teardown and leaks the veth, NAT rules,
+  // namespace directory, and subnet.
+  if (s.get_daemon_pid() > 0 &&
+      pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
+                                            s.get_daemon_start_time())) {
+    const pid_t group = s.get_daemon_pid();
+    trace(verbosity::info, "Sending SIGTERM to daemon group {}", group);
+    unused(linux::oo_kill(-group, SIGTERM));
 
     let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
     for (usize i = 0; i < iterations; ++i) {
-      if (!pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
-                                                 s.get_proxy_start_time())) {
+      if (::kill(-group, 0) != 0) {
+        trace(verbosity::debug, "Daemon group terminated gracefully");
         break;
       }
       unwrap(linux::oo_sleep_ms(constants::GRACEFUL_SHUTDOWN_SLEEP_MS));
     }
 
-    if (pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
-                                              s.get_proxy_start_time())) {
-      trace(verbosity::error, "Proxy did not terminate, sending SIGKILL");
-      unused(linux::oo_kill(s.get_proxy_pid(), SIGKILL));
+    if (::kill(-group, 0) == 0) {
+      trace(verbosity::error,
+            "Daemon group did not terminate, sending SIGKILL");
+      unused(linux::oo_kill(-group, SIGKILL));
+      unwrap(linux::oo_sleep_ms(constants::FORCEFUL_SHUTDOWN_SLEEP_MS));
+    }
+  } else if (s.get_daemon_pid() > 0) {
+    trace(verbosity::error, "Daemon PID {} not running (stale)",
+          s.get_daemon_pid());
+  }
+
+  // The proxy is its own session leader (it calls setsid in spawn_proxy), so it
+  // forms a separate group. Signal that group too so per-connection handler
+  // children stop with it. This runs under the invoking user, before the switch
+  // to oorunner below.
+  if (s.get_proxy_pid() > 0 &&
+      pid_tracker::is_alive_with_start_time(s.get_proxy_pid(),
+                                            s.get_proxy_start_time())) {
+    const pid_t group = s.get_proxy_pid();
+    trace(verbosity::info, "Sending SIGTERM to proxy group {}", group);
+    unused(linux::oo_kill(-group, SIGTERM));
+
+    let iterations = timeout_s * 1000 / constants::GRACEFUL_SHUTDOWN_SLEEP_MS;
+    for (usize i = 0; i < iterations; ++i) {
+      if (::kill(-group, 0) != 0) {
+        break;
+      }
+      unwrap(linux::oo_sleep_ms(constants::GRACEFUL_SHUTDOWN_SLEEP_MS));
+    }
+
+    if (::kill(-group, 0) == 0) {
+      trace(verbosity::error, "Proxy group did not terminate, sending SIGKILL");
+      unused(linux::oo_kill(-group, SIGKILL));
     }
   }
 

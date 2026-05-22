@@ -1,0 +1,25 @@
+#!/bin/sh
+# Verify that `oo down` escalates to SIGKILL when the daemon ignores SIGTERM,
+# and still completes within the timeout.
+
+NS="dfk"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sh -c 'trap "" TERM; while true; do sleep 1; done'
+CHILD_PID=$(grep '^child_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+if "$BIN" $FLAGS down "$NS" --timeout=2; then
+  echo "forceful down completed (ok)"
+else
+  echo "forceful down completed (FAILED)"
+fi
+
+sleep 1
+if kill -0 "$CHILD_PID" 2>/dev/null; then
+  echo "daemon killed after ignoring SIGTERM (FAILED)"
+else
+  echo "daemon killed after ignoring SIGTERM (ok)"
+fi
