@@ -1,28 +1,29 @@
 #!/bin/sh
-# Verify that a subnet freed on down is reusable. The lowest free octet is
-# allocated, so bringing one namespace up and down then another up should reuse
-# the same octet, proving free() actually released it.
+# Verify that down frees the namespace's pool entry and that the name can be
+# brought up again afterward, which proves free() released the slot. A specific
+# octet cannot be asserted because the suite runs tests in parallel and they
+# share the pool.
 
-NS1="pf1"
-NS2="pf2"
+NS="pf"
+POOL="/var/run/oo/ip-pool.ini"
 
-cleanup() {
-  "$BIN" $FLAGS down "$NS1" || true
-  "$BIN" $FLAGS down "$NS2" || true
-}
-"$BIN" $FLAGS down "$NS1" || true
-"$BIN" $FLAGS down "$NS2" || true
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS1" -- sleep 3
-OCT1=$(grep '^subnet_octet=' "/var/run/oo/$NS1/network.ini" | cut -d= -f2)
-"$BIN" $FLAGS down "$NS1"
+"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS down "$NS"
 
-"$BIN" $FLAGS up "$NS2" -- sleep 3
-OCT2=$(grep '^subnet_octet=' "/var/run/oo/$NS2/network.ini" | cut -d= -f2)
-
-if test -n "$OCT1" && test "$OCT1" = "$OCT2"; then
-  echo "freed subnet reused (ok)"
+if grep -q "=${NS}\$" "$POOL"; then
+  echo "pool entry freed on down: FAILED"
 else
-  echo "freed subnet oct1=$OCT1 oct2=$OCT2 (FAILED)"
+  echo "pool entry freed on down: ok"
+fi
+
+"$BIN" $FLAGS up "$NS" -- sleep 3
+
+if grep -q "=${NS}\$" "$POOL"; then
+  echo "pool entry reallocated on re-up: ok"
+else
+  echo "pool entry reallocated on re-up: FAILED"
 fi

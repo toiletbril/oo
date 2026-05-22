@@ -1,1 +1,2 @@
-freed subnet reused.*ok
+pool entry freed on down: ok
+pool entry reallocated on re-up: ok
