@@ -1,0 +1,22 @@
+#!/bin/sh
+# Verify that `oo up` refuses to adopt a directory under the runtime tree that
+# holds no oo state. Runs as root so it can create the foreign directory the
+# unprivileged suite cannot.
+
+NS="ff"
+DIR="/var/run/oo/$NS"
+
+cleanup() {
+  "$BIN" $FLAGS down "$NS" || true
+  rm -rf "$DIR"
+}
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+mkdir -p "$DIR"
+
+if "$BIN" $FLAGS up "$NS" -- sleep 1; then
+  echo "up adopted foreign dir: accepted (FAILED)"
+else
+  echo "up refused foreign dir: rejected (ok)"
+fi

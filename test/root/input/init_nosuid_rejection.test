@@ -1,0 +1,19 @@
+#!/bin/sh
+# Verify that `oo init` refuses to run from a binary on a nosuid mount, where
+# the kernel ignores file capabilities.
+
+MNT=$(mktemp -d)
+cleanup() {
+  umount "$MNT" 2>/dev/null || true
+  rmdir "$MNT" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+mount -t tmpfs -o nosuid none "$MNT"
+cp "$BIN" "$MNT/oo"
+
+if "$MNT/oo" $FLAGS init; then
+  echo "init on nosuid mount: accepted (FAILED)"
+else
+  echo "init on nosuid mount: rejected (ok)"
+fi

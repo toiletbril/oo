@@ -1,0 +1,25 @@
+#!/bin/sh
+# Verify that a recorded daemon pid which is alive but started at a different
+# time, the pid-reuse case, is treated as not running. Runs as root to edit the
+# state file. Points daemon_pid at init (pid 1), whose start time will not match
+# the recorded one.
+
+NS="pr"
+PIDS="/var/run/oo/$NS/pids.ini"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+ORIG=$(grep '^daemon_pid=' "$PIDS" | cut -d= -f2)
+
+sed -i 's/^daemon_pid=.*/daemon_pid=1/' "$PIDS"
+
+if "$BIN" $FLAGS exec "$NS" -- true; then
+  echo "exec on reused pid: accepted (FAILED)"
+else
+  echo "exec on reused pid: rejected (ok)"
+fi
+
+sed -i "s/^daemon_pid=.*/daemon_pid=$ORIG/" "$PIDS"

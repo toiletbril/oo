@@ -1,0 +1,27 @@
+#!/bin/sh
+# Verify that a corrupt pids.ini yields a clean error rather than aborting the
+# process under -fno-exceptions. Runs as root to edit the oorunner-owned file.
+# daemon_pid is restored afterward so cleanup can tear the namespace down.
+
+NS="cs"
+PIDS="/var/run/oo/$NS/pids.ini"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+ORIG=$(grep '^daemon_pid=' "$PIDS" | cut -d= -f2)
+
+sed -i 's/^daemon_pid=.*/daemon_pid=notanumber/' "$PIDS"
+
+"$BIN" $FLAGS down "$NS"
+RC=$?
+
+sed -i "s/^daemon_pid=.*/daemon_pid=$ORIG/" "$PIDS"
+
+if test "$RC" -eq 1; then
+  echo "corrupt state: clean error (ok)"
+else
+  echo "corrupt state: exit $RC (FAILED)"
+fi

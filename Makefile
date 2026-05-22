@@ -30,6 +30,10 @@ test: oo
 	echo Launching tests...
 	$(MAKE) -C test test
 
+test-root: oo
+	echo Launching root tests...
+	$(MAKE) -C test/root test
+
 refill: oo
 	echo Refilling tests...
 	$(MAKE) -C test refill
@@ -40,5 +44,6 @@ clean:
 	echo Cleaning up...
 	$(MAKE) -C src clean
 	$(MAKE) -C test clean
+	$(MAKE) -C test/root clean
 
-.PHONY: all oo install uninstall tidy fmt test refill_tests clean
+.PHONY: all oo install uninstall tidy fmt test test-root refill_tests clean

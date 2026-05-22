@@ -36,6 +36,9 @@ jobs:
       - name: Run tests
         run: sudo -u oouser -- make MODE=asan test
 
+      - name: Run root tests
+        run: sudo make MODE=asan test-root
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

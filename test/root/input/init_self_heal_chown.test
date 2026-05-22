@@ -1,0 +1,20 @@
+#!/bin/sh
+# Verify that `oo init` resets ownership of pre-existing entries under the
+# runtime tree to the oorunner service account.
+
+STALE="/var/run/oo/oo-selfheal-probe"
+
+cleanup() { rm -rf "$STALE"; }
+trap cleanup EXIT
+
+mkdir -p "$STALE"
+chown root:root "$STALE"
+
+"$BIN" $FLAGS init
+
+OWNER=$(stat -c '%U' "$STALE")
+if test "$OWNER" = "oorunner"; then
+  echo "init self-heals ownership (ok)"
+else
+  echo "init self-heals ownership: owner=$OWNER (FAILED)"
+fi

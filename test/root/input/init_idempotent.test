@@ -1,0 +1,19 @@
+#!/bin/sh
+# Verify that running `oo init` twice succeeds and leaves the runtime tree owned
+# by oorunner with mode 0755.
+
+"$BIN" $FLAGS init
+
+if "$BIN" $FLAGS init; then
+  echo "second init succeeded (ok)"
+else
+  echo "second init succeeded (FAILED)"
+fi
+
+OWNER=$(stat -c '%U' /var/run/oo)
+PERMS=$(stat -c '%a' /var/run/oo)
+if test "$OWNER" = "oorunner" && test "$PERMS" = "755"; then
+  echo "runtime tree intact (ok)"
+else
+  echo "runtime tree owner=$OWNER perms=$PERMS (FAILED)"
+fi
