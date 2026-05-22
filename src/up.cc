@@ -112,16 +112,31 @@ fn up(cli::cli &&cli) -> error_or<ok> {
     return make_error("--http-proxy-backend requires --http-proxy.");
   }
 
-  passwd pw;
-  unwrap(pw.su_oorunner());
-
-  unwrap(ensure_runtime_dir_exists());
-
   std::string ns_name = args[0];
   args.erase(args.begin());
 
   linux_namespace ns{ns_name};
   unwrap(ns.validate_name());
+
+  // Capture DNS configuration while still running as the invoking user. A
+  // --dns-file may be owned only by that user and unreadable by oorunner, so
+  // it is opened here and the held fd is read later by write_configs, after
+  // the drop. set_dns_servers only validates the IPs, so it is fine here too.
+  dominatrix dns(ns);
+  if (flag_resolv_conf_path.is_set()) {
+    unwrap(dns.set_dns_file(flag_resolv_conf_path.get_value()));
+  } else if (!flag_dns.is_empty()) {
+    std::vector<std::string> dns_servers;
+    for (const let &server : flag_dns.values()) {
+      dns_servers.push_back(server);
+    }
+    unwrap(dns.set_dns_servers(dns_servers));
+  }
+
+  passwd pw;
+  unwrap(pw.su_oorunner());
+
+  unwrap(ensure_runtime_dir_exists());
 
   ip_pool pool{ns};
 
@@ -185,18 +200,6 @@ fn up(cli::cli &&cli) -> error_or<ok> {
       cli::show_message(
           "warning: nscd is running; custom DNS may be ignored by the daemon");
     }
-  }
-
-  dominatrix dns(ns);
-
-  if (flag_resolv_conf_path.is_set()) {
-    unwrap(dns.set_dns_file(flag_resolv_conf_path.get_value()));
-  } else if (!flag_dns.is_empty()) {
-    std::vector<std::string> dns_servers;
-    for (const let &server : flag_dns.values()) {
-      dns_servers.push_back(server);
-    }
-    unwrap(dns.set_dns_servers(dns_servers));
   }
 
   unwrap(dns.write_configs());
