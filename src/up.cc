@@ -174,6 +174,13 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   let netconf = network_configurator{ns, subnet};
 
+  // Declared before the guard so they outlive it: the guard's cleanup lambdas
+  // capture these by reference, and locals are destroyed in reverse order, so
+  // the guard (declared later) must be destroyed first while these are still
+  // alive. Otherwise its destructor reads them after their scope has ended.
+  pid_t daemon_pid = -1;
+  pid_t proxy_pid = -1;
+
   cleanup_guard guard{};
 
   // Arm the subnet release before the first fallible step below. allocate()
@@ -207,7 +214,6 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   let resolv_path = unwrap(dns.get_resolv_conf_path());
   let nsswitch_path = unwrap(dns.get_nsswitch_conf_path());
 
-  pid_t daemon_pid = -1;
   guard.add_cleanup([&daemon_pid]() {
     // daemon_pid leads its own process group (the monitor called setsid), so
     // signal the group to take the actual daemon down on rollback, not just
@@ -229,7 +235,6 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   s.set_daemon_pid(daemon_pid);
   s.set_dns_on_monitor(flag_no_daemon_dns.is_enabled());
 
-  pid_t proxy_pid = -1;
   if (flag_http_proxy.is_set()) {
     guard.add_cleanup([&proxy_pid]() {
       // The proxy is its own session leader, so signal its group to also stop

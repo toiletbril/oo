@@ -91,6 +91,15 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
 
 } // namespace oo
 
+// SECURITY: oo drops privileges with setuid in its forked children, which
+// clears the dumpable flag. LeakSanitizer scans memory at exit via ptrace,
+// which the kernel forbids on a non-dumpable process, so under the asan build
+// every privilege-dropping process would abort with a LeakSanitizer fatal
+// error. Disable leak detection here rather than via ASAN_OPTIONS, since the
+// capability binary runs in secure-execution mode where that env is ignored.
+// The address checker itself is unaffected.
+extern "C" const char *__lsan_default_options() { return "detect_leaks=0"; }
+
 fn main(int argc, char **argv) -> int
 {
   insist(argc >= 1);
