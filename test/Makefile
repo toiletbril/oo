@@ -24,7 +24,9 @@ TEST_NAMES := $(INPUT_FILES:input/%.test=%)
 	fi
 
 setup_and_run_tests:
-	if ! getcap $(BIN) 2>/dev/null | grep -q cap_sys_admin; then \
+	if [ "$$(id -u)" = "0" ]; then \
+		printf "Running as root. These tests assert unprivileged-user behavior; run them as a normal user and use 'make test-root' for the root suite. Skipping.\n" >&2; \
+	elif ! getcap $(BIN) 2>/dev/null | grep -q cap_sys_admin; then \
 		printf "Capabilities not set. Skipping tests.\n" $(BIN) >&2; \
 	else \
 		$(MAKE) run_tests; \

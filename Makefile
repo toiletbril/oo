@@ -27,8 +27,13 @@ fmt:
 	$(MAKE) -C src fmt
 
 test: oo
-	echo Launching tests...
-	$(MAKE) -C test test
+	if [ "$$(id -u)" = "0" ]; then \
+		echo Running as root, launching root tests only...; \
+		$(MAKE) -C test/root test; \
+	else \
+		echo Launching tests...; \
+		$(MAKE) -C test test; \
+	fi
 
 test-root: oo
 	echo Launching root tests...
