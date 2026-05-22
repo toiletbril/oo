@@ -45,7 +45,7 @@ clean:
 test: $(BIN)
 	$(MAKE) -B clean
 	$(MAKE) -B setup_and_run_tests
-	test -f $(FAILED_LIST) && cat $(FAILED_LIST) || true
+	if test -s $(FAILED_LIST); then cat $(FAILED_LIST); exit 1; fi
 
 run_tests: $(TEST_NAMES)
 
