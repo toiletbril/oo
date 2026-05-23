@@ -11,33 +11,46 @@ namespace oo {
 fn endpoint::parse(std::string_view text) -> error_or<endpoint> {
   let colon = text.rfind(':');
   if (colon == std::string_view::npos) {
-    return make_error("Proxy address must be <ip>:<port>: " +
-                      std::string{text});
+    return make_error(
+        "Proxy address must be in the form <ip>:<port>, but got '" +
+        std::string{text} + "'");
   }
 
   std::string host{text.substr(0, colon)};
   std::string port_str{text.substr(colon + 1)};
 
   if (host.empty()) {
-    return make_error("Proxy address is missing a host: " + std::string{text});
+    return make_error("Proxy address '" + std::string{text} +
+                      "' is missing a host");
   }
 
   struct in_addr addr;
   if (inet_pton(AF_INET, host.c_str(), &addr) != 1) {
-    return make_error("Proxy host must be an IPv4 address: " + host);
+    return make_error("Proxy host must be an IPv4 address, but got '" + host +
+                      "'");
+  }
+
+  // A loopback bind such as 127.0.0.1 only listens on the host and is never
+  // reachable from the namespace the clients live in, so the bind address must
+  // always be 0.0.0.0.
+  if (addr.s_addr != htonl(INADDR_ANY)) {
+    return make_error("Proxy bind host must be 0.0.0.0, but got '" + host +
+                      "'");
   }
 
   if (port_str.empty()) {
-    return make_error("Proxy address is missing a port: " + std::string{text});
+    return make_error("Proxy address '" + std::string{text} +
+                      "' is missing a port");
   }
 
   char *end = nullptr;
   let parsed = strtoul(port_str.c_str(), &end, 10);
   if (end == port_str.c_str() || *end != '\0') {
-    return make_error("Invalid proxy port: " + port_str);
+    return make_error("Proxy port '" + port_str + "' is not a valid number");
   }
   if (parsed < 1 || parsed > 65535) {
-    return make_error("Proxy port must be between 1 and 65535: " + port_str);
+    return make_error("Proxy port must be between 1 and 65535, but got '" +
+                      port_str + "'");
   }
 
   return endpoint{std::move(host), static_cast<u16>(parsed)};

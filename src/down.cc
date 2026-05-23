@@ -41,7 +41,8 @@ fn down(cli::cli &&cli) -> error_or<ok> {
     char *end = nullptr;
     u64 parsed = strtoul(timeout_str.c_str(), &end, 10);
     if (end == timeout_str.c_str() || *end != '\0') {
-      return make_error("Invalid --timeout value: " + timeout_str);
+      return make_error("The --timeout value '" + timeout_str +
+                        "' is not a valid number");
     }
     if (parsed > 3600) {
       return make_error("--timeout must be <= 3600");

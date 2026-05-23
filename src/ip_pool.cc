@@ -58,22 +58,22 @@ ip_pool::ip_pool(linux_namespace &ns)
 static fn parse_octet_from_key(const std::string &key) -> error_or<u8> {
   let first_dot = key.find('.');
   if (first_dot == std::string::npos) {
-    return make_error("Invalid pool key: " + key);
+    return make_error("The pool key '" + key + "' is not valid");
   }
   let second_dot = key.find('.', first_dot + 1);
   if (second_dot == std::string::npos) {
-    return make_error("Invalid pool key: " + key);
+    return make_error("The pool key '" + key + "' is not valid");
   }
   let third_dot = key.find('.', second_dot + 1);
   if (third_dot == std::string::npos) {
-    return make_error("Invalid pool key: " + key);
+    return make_error("The pool key '" + key + "' is not valid");
   }
 
   let octet_str = key.substr(second_dot + 1, third_dot - second_dot - 1);
   char *end = nullptr;
   unsigned long v = strtoul(octet_str.c_str(), &end, 10);
   if (end == octet_str.c_str() || *end != '\0' || v >= 256) {
-    return make_error("Invalid pool key: " + key);
+    return make_error("The pool key '" + key + "' is not valid");
   }
 
   return static_cast<u8>(v);

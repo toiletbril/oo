@@ -16,8 +16,9 @@ struct endpoint {
   std::string host;
   u16 port{0};
 
-  // Parse "<ipv4>:<port>". The host must be a literal IPv4 address and the
-  // port must be in the range 1 to 65535.
+  // Parse "<ipv4>:<port>". The host must be 0.0.0.0, since a loopback bind is
+  // never reachable from the client namespace, and the port must be in the
+  // range 1 to 65535.
   [[nodiscard]] static fn parse(std::string_view text) -> error_or<endpoint>;
   [[nodiscard]] fn to_string() const -> std::string;
 };

@@ -25,8 +25,8 @@ fn parse_u64_field(std::string_view name, const std::string &value)
   errno = 0;
   unsigned long long parsed = strtoull(value.c_str(), &end, 10);
   if (end == value.c_str() || *end != '\0' || errno != 0) {
-    return make_error("Corrupt value for '" + std::string{name} +
-                      "' in network file: " + value);
+    return make_error("Corrupt value '" + value + "' for '" +
+                      std::string{name} + "' in the network file");
   }
   return static_cast<u64>(parsed);
 }
@@ -40,9 +40,9 @@ network_configurator::~network_configurator() = default;
 fn network_configurator::detect_default_interface() -> error_or<std::string> {
   std::ifstream route_file(constants::PROC_NET_ROUTE);
   if (!route_file.is_open()) {
-    return make_error("Could not open " +
-                      std::string{constants::PROC_NET_ROUTE} + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not open '" +
+                      std::string{constants::PROC_NET_ROUTE} +
+                      "': " + linux::get_errno_string());
   }
 
   std::string line;
@@ -62,8 +62,8 @@ fn network_configurator::detect_default_interface() -> error_or<std::string> {
     }
   }
 
-  return make_error("No default route found in " +
-                    std::string{constants::PROC_NET_ROUTE});
+  return make_error("No default route found in '" +
+                    std::string{constants::PROC_NET_ROUTE} + "'");
 }
 
 fn network_configurator::enable_ip_forward() -> error_or<ok> {
@@ -79,16 +79,16 @@ fn network_configurator::enable_ip_forward() -> error_or<ok> {
 
   std::ofstream forward_file(std::string{constants::PROC_IPV4_FORWARD});
   if (!forward_file.is_open()) {
-    return make_error("Could not open " +
-                      std::string{constants::PROC_IPV4_FORWARD} + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not open '" +
+                      std::string{constants::PROC_IPV4_FORWARD} +
+                      "': " + linux::get_errno_string());
   }
 
   forward_file << "1\n";
   if (!forward_file.good()) {
-    return make_error("Failed to write to " +
-                      std::string{constants::PROC_IPV4_FORWARD} + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not write to '" +
+                      std::string{constants::PROC_IPV4_FORWARD} +
+                      "': " + linux::get_errno_string());
   }
 
   trace(verbosity::info, "Enabled IP forwarding");
@@ -216,7 +216,8 @@ fn network_configurator::load() -> error_or<ok> {
   if (!std::filesystem::exists(net_path, ec)) {
     unwrap(
         oo_error_code(ec, "Could not stat network file " + net_path.string()));
-    return make_error("Network file does not exist: " + net_path.string());
+    return make_error("The network file '" + net_path.string() +
+                      "' does not exist");
   }
 
   ini_file file{net_path};
@@ -229,7 +230,8 @@ fn network_configurator::load() -> error_or<ok> {
   if (let v = file.find("subnet_octet")) {
     let parsed = unwrap(parse_u64_field("subnet_octet", *v));
     if (parsed > 255) {
-      return make_error("subnet_octet out of range in network file: " + *v);
+      return make_error("The subnet_octet value '" + *v +
+                        "' in the network file is out of range");
     }
     subnet_octet = static_cast<u8>(parsed);
   }
@@ -237,7 +239,8 @@ fn network_configurator::load() -> error_or<ok> {
     let parsed = unwrap(parse_u64_field("subnet_prefix", *v));
     if (parsed < constants::MIN_SUBNET_PREFIX_LEN ||
         parsed > constants::MAX_SUBNET_PREFIX_LEN) {
-      return make_error("subnet_prefix out of range in network file: " + *v);
+      return make_error("The subnet_prefix value '" + *v +
+                        "' in the network file is out of range");
     }
     subnet_prefix = static_cast<u8>(parsed);
   }

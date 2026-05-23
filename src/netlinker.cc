@@ -91,9 +91,9 @@ fn netlinker::get_ifindex(std::string_view ifname) -> error_or<u32> {
   trace_variables(verbosity::debug, ifname);
   insist(!ifname.empty() && ifname.size() < IFNAMSIZ,
          "interface name must be non-empty and fit in IFNAMSIZ");
-  let i =
-      unwrap(oo_non_zero(if_nametoindex(ifname.data()),
-                         "Interface not found: `" + std::string{ifname} + "`"));
+  let i = unwrap(
+      oo_non_zero(if_nametoindex(ifname.data()),
+                  "The interface '" + std::string{ifname} + "' was not found"));
   trace(verbosity::debug, "{}", i);
 
   return i;
@@ -158,7 +158,7 @@ fn netlinker::add_address(std::string_view ifname, std::string_view ip,
          "IP address must be a non-empty C string. Fuck you");
   struct in_addr addr;
   if (inet_pton(AF_INET, ip.data(), &addr) != 1) {
-    return make_error("Invalid IP address: " + std::string{ip});
+    return make_error("The IP address '" + std::string{ip} + "' is not valid");
   }
 
   addr_request<256> req{};
@@ -192,7 +192,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
            "destination IP must be a non-empty C string");
     struct in_addr dst;
     if (inet_pton(AF_INET, dest_ip.data(), &dst) != 1) {
-      return make_error("Invalid destination IP: " + std::string{dest_ip});
+      return make_error("The destination IP '" + std::string{dest_ip} +
+                        "' is not valid");
     }
     builder.add_attr_in_addr(RTA_DST, dst);
   }
@@ -201,7 +202,8 @@ fn netlinker::add_route(std::string_view dest_ip, u8 prefix_len,
          "gateway IP must be a non-empty C string");
   struct in_addr gw;
   if (inet_pton(AF_INET, gateway.data(), &gw) != 1) {
-    return make_error("Invalid gateway IP: " + std::string{gateway});
+    return make_error("The gateway IP '" + std::string{gateway} +
+                      "' is not valid");
   }
   builder.add_attr_in_addr(RTA_GATEWAY, gw);
 

@@ -35,13 +35,13 @@ fn bind_test(const endpoint &bind) -> error_or<ok> {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(bind.port);
   if (inet_pton(AF_INET, bind.host.c_str(), &addr.sin_addr) != 1) {
-    return make_error("Invalid proxy bind host: " + bind.host);
+    return make_error("The proxy bind host '" + bind.host + "' is not valid");
   }
 
   if (::bind(probe, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) !=
       0) {
-    return make_error("Could not bind squid to " + bind.to_string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not bind squid to '" + bind.to_string() +
+                      "': " + linux::get_errno_string());
   }
 
   return ok{};
@@ -84,8 +84,8 @@ fn squid_proxy::prepare(const endpoint &bind) -> error_or<ok> {
 
   std::ofstream config(config_path);
   if (!config.is_open()) {
-    return make_error("Could not create squid config at: " +
-                      config_path.string() + ": " + linux::get_errno_string());
+    return make_error("Could not create the squid config at '" +
+                      config_path.string() + "': " + linux::get_errno_string());
   }
 
   // Restrict clients to the oo subnet space. Host traffic to the namespace
@@ -106,8 +106,8 @@ fn squid_proxy::prepare(const endpoint &bind) -> error_or<ok> {
   config << "coredump_dir /tmp\n";
 
   if (!config.good()) {
-    return make_error("Error writing squid config at: " + config_path.string() +
-                      ": " + linux::get_errno_string());
+    return make_error("Could not write the squid config at '" +
+                      config_path.string() + "': " + linux::get_errno_string());
   }
   config.close();
 

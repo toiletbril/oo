@@ -33,8 +33,8 @@ fn file_lock::acquire() -> error_or<ok> {
 
   m_fd = ::open(m_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
   if (m_fd < 0) {
-    return make_error("Could not open lock file: " + m_path.string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not open the lock file '" + m_path.string() +
+                      "': " + linux::get_errno_string());
   }
   insist(m_fd >= 0, "open returned a valid fd then went negative");
 
@@ -43,8 +43,8 @@ fn file_lock::acquire() -> error_or<ok> {
   if (::fcntl(m_fd, F_SETLKW, &fl) != 0) {
     unwrap(linux::oo_close(m_fd));
     m_fd = -1;
-    return make_error("Could not acquire lock on " + m_path.string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not acquire the lock on '" + m_path.string() +
+                      "': " + linux::get_errno_string());
   }
 
   let pid = std::to_string(getpid());

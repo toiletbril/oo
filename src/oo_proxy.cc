@@ -120,8 +120,8 @@ fn resolve_and_connect(const std::string &host, const std::string &port)
   struct addrinfo *res = nullptr;
   int rc = ::getaddrinfo(host.c_str(), port.c_str(), &hints, &res);
   if (rc != 0) {
-    return make_error("Could not resolve " + host + ": " +
-                      std::string{gai_strerror(rc)});
+    return make_error("Could not resolve host '" + host +
+                      "': " + std::string{gai_strerror(rc)});
   }
 
   linux::oo_fd out;
@@ -146,7 +146,8 @@ fn resolve_and_connect(const std::string &host, const std::string &port)
 
   if (!out.is_valid()) {
     if (saw_loopback) {
-      return make_error("Refusing to proxy to a loopback address: " + host);
+      return make_error("Refusing to proxy to the loopback address '" + host +
+                        "'");
     }
     return make_error("Could not connect to " + host + ":" + port);
   }
@@ -222,18 +223,18 @@ fn oo_proxy::prepare(const endpoint &bind) -> error_or<ok> {
   addr.sin_family = AF_INET;
   addr.sin_port = htons(bind.port);
   if (inet_pton(AF_INET, bind.host.c_str(), &addr.sin_addr) != 1) {
-    return make_error("Invalid proxy bind host: " + bind.host);
+    return make_error("The proxy bind host '" + bind.host + "' is not valid");
   }
 
   if (::bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr),
              sizeof(addr)) != 0) {
-    return make_error("Could not bind proxy to " + bind.to_string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not bind proxy to '" + bind.to_string() +
+                      "': " + linux::get_errno_string());
   }
 
   if (::listen(listen_fd, SOMAXCONN) != 0) {
-    return make_error("Could not listen on " + bind.to_string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not listen on '" + bind.to_string() +
+                      "': " + linux::get_errno_string());
   }
 
   m_listen_fd = std::move(listen_fd);
@@ -344,7 +345,8 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
   let sp1 = request_line.find(' ');
   let sp2 = request_line.rfind(' ');
   if (sp1 == std::string::npos || sp2 == std::string::npos || sp1 == sp2) {
-    return make_error("Malformed proxy request line: " + request_line);
+    return make_error("The proxy request line '" + request_line +
+                      "' is malformed");
   }
 
   const std::string method = request_line.substr(0, sp1);
@@ -355,7 +357,8 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
     std::string host;
     std::string port;
     if (!split_host_port(target, "", host, port)) {
-      return make_error("CONNECT target must be host:port: " + target);
+      return make_error("The CONNECT target must be host:port, but got '" +
+                        target + "'");
     }
 
     let upstream = unwrap(resolve_and_connect(host, port));
@@ -366,8 +369,9 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
 
   const std::string scheme = "http://";
   if (!target.starts_with(scheme)) {
-    return make_error(
-        "Proxy supports CONNECT and absolute http:// targets only: " + target);
+    return make_error("The proxy supports CONNECT and absolute http:// targets "
+                      "only, but got '" +
+                      target + "'");
   }
 
   const std::string rest = target.substr(scheme.size());
@@ -380,7 +384,8 @@ fn oo_proxy::handle_client(linux::oo_fd client) -> error_or<ok> {
   std::string host;
   std::string port;
   if (!split_host_port(authority, "80", host, port)) {
-    return make_error("Proxy request is missing a host: " + target);
+    return make_error("The proxy request target '" + target +
+                      "' is missing a host");
   }
 
   let upstream = unwrap(resolve_and_connect(host, port));

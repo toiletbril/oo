@@ -33,8 +33,8 @@ fn parse_u64_field(std::string_view name, const std::string &value)
   errno = 0;
   unsigned long long parsed = strtoull(value.c_str(), &end, 10);
   if (end == value.c_str() || *end != '\0' || errno != 0) {
-    return make_error("Corrupt value for '" + std::string{name} +
-                      "' in state file: " + value);
+    return make_error("Corrupt value '" + value + "' for '" +
+                      std::string{name} + "' in the state file");
   }
   return static_cast<u64>(parsed);
 }
@@ -508,7 +508,8 @@ fn satan::load() -> error_or<ok> {
   std::error_code ec;
   if (!std::filesystem::exists(pid_path, ec)) {
     unwrap(oo_error_code(ec, "Could not stat PID file " + pid_path.string()));
-    return make_error("PID file does not exist: " + pid_path.string());
+    return make_error("The PID file '" + pid_path.string() +
+                      "' does not exist");
   }
 
   ini_file file{pid_path};
@@ -601,8 +602,9 @@ fn satan::sweep_orphans() -> error_or<ok> {
     let target_status = std::filesystem::symlink_status(target, stat_ec);
     if (!stat_ec &&
         target_status.type() == std::filesystem::file_type::symlink) {
-      return make_error("Refusing to clean orphan '" + name + "': target " +
-                        target.string() + " is a symlink");
+      return make_error("Refusing to clean orphan '" + name +
+                        "' because its target '" + target.string() +
+                        "' is a symlink");
     }
 
     if (!stat_ec && std::filesystem::exists(target_status)) {

@@ -49,8 +49,8 @@ fn ini_file::load() -> error_or<ok> {
 
   std::ifstream file(m_path);
   if (!file.is_open()) {
-    return make_error("Could not open ini file for reading: " +
-                      m_path.string() + ": " + linux::get_errno_string());
+    return make_error("Could not open the ini file '" + m_path.string() +
+                      "' for reading: " + linux::get_errno_string());
   }
 
   std::string line;
@@ -122,8 +122,8 @@ fn ini_file::flush() -> error_or<ok> {
 
   std::ofstream file(m_path, std::ios::out | std::ios::trunc);
   if (!file.is_open()) {
-    return make_error("Could not open ini file for writing: " +
-                      m_path.string() + ": " + linux::get_errno_string());
+    return make_error("Could not open the ini file '" + m_path.string() +
+                      "' for writing: " + linux::get_errno_string());
   }
 
   for (const let &line : m_lines) {
@@ -131,8 +131,8 @@ fn ini_file::flush() -> error_or<ok> {
   }
 
   if (!file.good()) {
-    return make_error("Error writing to ini file: " + m_path.string() + ": " +
-                      linux::get_errno_string());
+    return make_error("Could not write to the ini file '" + m_path.string() +
+                      "': " + linux::get_errno_string());
   }
 
   m_dirty = false;

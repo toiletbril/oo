@@ -31,7 +31,8 @@ static fn parse_start_time(const std::string &content) -> error_or<u64> {
   errno = 0;
   unsigned long long v = std::strtoull(field.c_str(), &end, 10);
   if (end == field.c_str() || *end != '\0' || errno != 0) {
-    return make_error("non-numeric start_time in /proc/<pid>/stat: " + field);
+    return make_error("The start_time field '" + field +
+                      "' in /proc/<pid>/stat is not numeric");
   }
   return static_cast<u64>(v);
 }
@@ -85,14 +86,16 @@ fn pid_tracker::read_pid_file(std::string_view path) -> error_or<pid_t> {
   trace_variables(verbosity::all, path);
   std::ifstream file(path.data());
   if (!file.is_open()) {
-    return make_error("Could not open PID file: " + std::string{path});
+    return make_error("Could not open the PID file '" + std::string{path} +
+                      "'");
   }
 
   pid_t pid;
   file >> pid;
 
   if (file.fail()) {
-    return make_error("Invalid PID in file: " + std::string{path});
+    return make_error("The PID file '" + std::string{path} +
+                      "' contains an invalid PID");
   }
 
   return pid;
@@ -115,8 +118,8 @@ fn pid_tracker::write_pid_file(std::string_view path, pid_t pid)
 
   std::ofstream file(path.data());
   if (!file.is_open()) {
-    return make_error("Could not open PID file for writing: " +
-                      std::string{path});
+    return make_error("Could not open the PID file '" + std::string{path} +
+                      "' for writing");
   }
 
   file << pid << "\n";

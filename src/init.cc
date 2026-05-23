@@ -87,9 +87,9 @@ fn init(cli::cli &&cli) -> error_or<ok> {
   for (const let &entry : std::filesystem::recursive_directory_iterator(
            constants::OO_RUN_DIR, ec)) {
     if (ec) {
-      return make_error("Failed to enumerate " +
-                        std::string{constants::OO_RUN_DIR} + ": " +
-                        ec.message());
+      return make_error("Could not enumerate '" +
+                        std::string{constants::OO_RUN_DIR} +
+                        "': " + ec.message());
     }
     unwrap(oo_linux_syscall(lchown, entry.path().c_str(), oor.uid, oor.gid));
   }

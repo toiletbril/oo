@@ -72,8 +72,8 @@ fn netfilterer_backend::persist_cleanup(const std::vector<std::string> &argv)
 
   std::error_code ec;
   if (!std::filesystem::exists(ns_path, ec) || ec) {
-    return make_error("Namespace directory missing for netfilter log: " +
-                      ns_path.string());
+    return make_error("The namespace directory '" + ns_path.string() +
+                      "' is missing for the netfilter log");
   }
 
   std::ofstream f(log_path, std::ios::app);

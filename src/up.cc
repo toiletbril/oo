@@ -88,7 +88,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
     char *end = nullptr;
     const u64 parsed = strtoul(prefix_str.c_str(), &end, 10);
     if (end == prefix_str.c_str() || *end != '\0') {
-      return make_error("Invalid --subnet-prefix value: " + prefix_str);
+      return make_error("The --subnet-prefix value '" + prefix_str +
+                        "' is not a valid number");
     }
     if (parsed < constants::MIN_SUBNET_PREFIX_LEN ||
         parsed > constants::MAX_SUBNET_PREFIX_LEN) {
