@@ -443,10 +443,8 @@ fn cli::show_help() const -> void {
     }
   }
 
-  static constexpr usize MAX_WIDTH = 24;
-  static constexpr usize STRING_EXTRA = 11;
-  static constexpr usize MANY_STRINGS_EXTRA = 11;
-  static constexpr usize REPEATED_BOOLEAN_EXTRA = 5;
+  static constexpr usize DESC_COL = 26;
+  static constexpr usize LINE_WIDTH = 80;
 
   if (!m_flags.empty()) {
     s += "OPTIONS\n";
@@ -468,30 +466,24 @@ fn cli::show_help() const -> void {
         flag_part += f->get_long_name();
 
         if (f->kind() == flag::kind::string)
-          flag_part += "=<..>      ";
+          flag_part += "=<..>";
         else if (f->kind() == flag::kind::many_strings)
           flag_part += "=<..>, <..>";
       } else {
         flag_part += "    ";
       }
 
-      usize prefix_len = has_short ? 4 : 2;
-      usize flag_len =
-          (f->get_long_name().empty() ? 0 : 2 + f->get_long_name().length());
-      usize extra =
-          (flag::kind::string == f->kind())             ? STRING_EXTRA
-          : (flag::kind::many_strings == f->kind())     ? MANY_STRINGS_EXTRA
-          : (flag::kind::repeated_boolean == f->kind()) ? REPEATED_BOOLEAN_EXTRA
-                                                        : 0;
-      usize total = prefix_len + flag_len + extra;
-
-      if (total < MAX_WIDTH) {
-        for (usize i = 0; i < MAX_WIDTH - total; i++)
-          flag_part += ' ';
+      // Every description starts at the same column. A flag whose text reaches
+      // that column keeps its description on the next line rather than pushing
+      // the column to the right.
+      if (flag_part.length() < DESC_COL) {
+        flag_part += std::string(DESC_COL - flag_part.length(), ' ');
+        s += flag_part;
+      } else {
+        s += flag_part + "\n" + std::string(DESC_COL, ' ');
       }
 
-      s += flag_part;
-      s += wrap_text(f->get_description(), 80, flag_part.length());
+      s += wrap_text(f->get_description(), LINE_WIDTH, DESC_COL);
       s += "\n";
     }
   }

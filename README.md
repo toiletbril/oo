@@ -2,9 +2,9 @@
 
 [![Integration Tests](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml/badge.svg?branch=staging)](https://github.com/toiletbril/oo/actions/workflows/integration-tests.yml)
 
-Run daemons inside isolated Linux network namespaces from the command line via
-a small binary. Useful for split-tunneling TUN-based VPNs, or anything else
-that benefits from a per-namespace routing table.
+Run and proxy network daemons inside isolated Linux namespaces from the command
+line via a small binary. Useful for split-tunneling TUN-based VPNs, or anything
+else that benefits from a per-namespace routing table.
 
 The software is very early stage. The security model is roughly 'I added as
 many asserts as I could and there's probably only 3 users using this software'.
@@ -121,13 +121,6 @@ before falling back to `SIGKILL`, configurable with `--timeout=<seconds>`.
 `oo init` sets file capabilities on the binary so unprivileged users can
 invoke namespace operations without `sudo`:
 
-```cpp
-static constexpr cap_value_t CAP_LIST[] = {
-    CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE,
-    CAP_SETUID,    CAP_SETGID,    CAP_SYS_CHROOT,
-};
-```
-
 | Capability                 | Reason                                               |
 |----------------------------|------------------------------------------------------|
 | `CAP_SYS_ADMIN`            | `unshare()`, `setns()`                               |
@@ -143,8 +136,8 @@ effective and inheritable capability sets dropped before `exec`.
 Runtime directory layout and permissions:
 
 ```
-/var/run/oo/          uurunner:uurunner  0755  (only oo can create entries)
-/var/run/oo/<name>/   uurunner:uurunner  0700  (only creator can access)
+/var/run/oo/        oorunner:oorunner 0755 (only oo can create entries)
+/var/run/oo/<name>/ oorunner:oorunner 0700 (only creator can access)
 ```
 
 ## Development
