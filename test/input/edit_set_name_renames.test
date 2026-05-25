@@ -1,0 +1,58 @@
+#!/bin/sh
+# Verify that `oo edit --relaunch-daemon --set-name` moves the namespace to the
+# new name, keeps the subnet, transfers pool ownership, and leaves the old name
+# not running.
+
+OLD="rn"
+NEW="rm"
+
+cleanup() {
+  "$BIN" $FLAGS down "$OLD" || true
+  "$BIN" $FLAGS down "$NEW" || true
+}
+"$BIN" $FLAGS down "$OLD" || true
+"$BIN" $FLAGS down "$NEW" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$OLD" -- sleep 30
+OLD_OCTET=$(grep '^subnet_octet=' "/var/run/oo/$OLD/network.ini" | cut -d= -f2)
+
+"$BIN" $FLAGS edit "$OLD" --relaunch-daemon --set-name="$NEW" -- sleep 30
+sleep 1
+
+if [ ! -d "/var/run/oo/$OLD" ]; then
+  echo "old namespace removed (ok)"
+else
+  echo "old namespace removed (FAILED)"
+fi
+
+NEW_PID=$(grep '^daemon_pid=' "/var/run/oo/$NEW/pids.ini" 2>/dev/null | cut -d= -f2)
+if [ -n "$NEW_PID" ] && kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "new namespace running (ok)"
+else
+  echo "new namespace running (FAILED)"
+fi
+
+NEW_OCTET=$(grep '^subnet_octet=' "/var/run/oo/$NEW/network.ini" 2>/dev/null | cut -d= -f2)
+if [ -n "$NEW_OCTET" ] && [ "$NEW_OCTET" = "$OLD_OCTET" ]; then
+  echo "subnet preserved (ok)"
+else
+  echo "subnet preserved (FAILED old=$OLD_OCTET new=$NEW_OCTET)"
+fi
+
+# ip-pool.ini is shared and rewritten non-atomically by other parallel tests,
+# so retry to avoid reading it mid-rewrite.
+transferred=no
+for _ in 1 2 3 4 5; do
+  if grep -qE "=${NEW}$" /var/run/oo/ip-pool.ini 2>/dev/null &&
+     ! grep -qE "=${OLD}$" /var/run/oo/ip-pool.ini 2>/dev/null; then
+    transferred=yes
+    break
+  fi
+  sleep 1
+done
+if [ "$transferred" = yes ]; then
+  echo "pool ownership transferred (ok)"
+else
+  echo "pool ownership transferred (FAILED)"
+fi

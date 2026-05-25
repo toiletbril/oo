@@ -1,0 +1,37 @@
+#!/bin/sh
+# Verify that `oo edit --restart-proxy` replaces a running proxy: the old proxy
+# dies and a new one with a different pid is recorded and alive.
+
+NS="ep"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:18083 -- sleep 30
+OLD=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+OLD_ST=$(grep '^proxy_start_time=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+"$BIN" $FLAGS edit "$NS" --restart-proxy --http-proxy=0.0.0.0:18084
+sleep 1
+NEW=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+NEW_ST=$(grep '^proxy_start_time=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+
+# A reused pid can equal the old one, so a differing start time also counts as
+# a replaced proxy.
+if [ -n "$NEW" ] && [ "$NEW" -gt 0 ] 2>/dev/null &&
+   { [ "$NEW" != "$OLD" ] || [ "$NEW_ST" != "$OLD_ST" ]; }; then
+  echo "restart changed proxy pid (ok)"
+else
+  echo "restart changed proxy pid (FAILED old=$OLD/$OLD_ST new=$NEW/$NEW_ST)"
+fi
+if kill -0 "$OLD" 2>/dev/null; then
+  echo "old proxy stopped (FAILED still alive)"
+else
+  echo "old proxy stopped (ok)"
+fi
+if kill -0 "$NEW" 2>/dev/null; then
+  echo "new proxy alive (ok)"
+else
+  echo "new proxy alive (FAILED)"
+fi

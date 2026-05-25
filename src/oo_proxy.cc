@@ -306,6 +306,7 @@ fn oo_proxy::run() -> error_or<ok> {
     }
 
     if (pid.get_value() == 0) {
+      linux::set_process_name("oo: proxy worker [" + m_ns.get_name() + "]");
       let r = handle_client(std::move(client_fd));
       _exit(r.is_err() ? 1 : 0);
     }

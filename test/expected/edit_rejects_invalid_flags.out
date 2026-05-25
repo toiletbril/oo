@@ -1,0 +1,4 @@
+noaction: rejected.*ok
+setname: rejected.*ok
+nobackend: rejected.*ok
+norestart: rejected.*ok

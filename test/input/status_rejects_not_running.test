@@ -1,0 +1,13 @@
+#!/bin/sh
+# Verify that `oo status` on a namespace that is not running is rejected rather
+# than printing an empty report.
+
+NS="sn"
+
+"$BIN" $FLAGS down "$NS" || true
+
+if "$BIN" $FLAGS status "$NS"; then
+  echo "status on not-running ns: accepted (FAILED)"
+else
+  echo "status on not-running ns: rejected (ok)"
+fi

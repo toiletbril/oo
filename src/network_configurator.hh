@@ -37,6 +37,9 @@ public:
   [[nodiscard]] fn get_subnet_octet() const -> u8 {
     return m_subnet.get_third_octet();
   }
+  [[nodiscard]] fn get_subnet_prefix() const -> u8 {
+    return m_subnet.get_prefix_len();
+  }
   [[nodiscard]] fn get_netlinker() -> netlinker & { return m_netlinker; }
 
 private:

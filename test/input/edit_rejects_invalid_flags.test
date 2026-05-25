@@ -1,0 +1,32 @@
+#!/bin/sh
+# Verify that invalid `oo edit` flag combinations are rejected. Errors go to
+# stderr (captured to trace.log by the Makefile); each case prints an ok/FAILED
+# line to stdout based on exit status.
+
+NS="er"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+check_rejected() {
+  label=$1
+  shift
+  if "$BIN" $FLAGS edit "$@"; then
+    echo "$label: accepted (FAILED)"
+  else
+    echo "$label: rejected (ok)"
+  fi
+}
+
+# No action flag.
+check_rejected "noaction"  "$NS"
+
+# Rename without relaunch.
+check_rejected "setname"   "$NS" --set-name=foo
+
+# Backend without the proxy flag.
+check_rejected "nobackend" "$NS" --http-proxy-backend=builtin
+
+# Restart without the proxy flag.
+check_rejected "norestart" "$NS" --restart-proxy

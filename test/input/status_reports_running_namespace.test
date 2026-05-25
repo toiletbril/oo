@@ -1,0 +1,32 @@
+#!/bin/sh
+# Verify that `oo status <ns>` reports the daemon and the namespace IP for a
+# running namespace, and that the no-argument listing includes it. Status is
+# run without -v so only the report lines reach stderr, which is merged into
+# the captured variable.
+
+NS="sr"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+DETAIL=$("$BIN" status "$NS" 2>&1)
+if echo "$DETAIL" | grep -q "Daemon PID"; then
+  echo "detail shows daemon (ok)"
+else
+  echo "detail shows daemon (FAILED)"
+fi
+if echo "$DETAIL" | grep -qE "Namespace IP: +10\.0\.[0-9]+\.2"; then
+  echo "detail shows namespace ip (ok)"
+else
+  echo "detail shows namespace ip (FAILED)"
+fi
+
+LIST=$("$BIN" status 2>&1)
+if echo "$LIST" | grep -qE "${NS}: daemon alive"; then
+  echo "list shows namespace (ok)"
+else
+  echo "list shows namespace (FAILED)"
+fi

@@ -41,7 +41,11 @@ public:
   // Spawn a forward proxy inside the namespace, bound to `bind`. Requires the
   // daemon to already be up so its net and mount namespaces can be joined. The
   // returned PID is the proxy process; it is persisted so `down` can stop it.
-  [[nodiscard]] fn spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
+  // `reachable_ip` is the namespace IP the proxy is reachable at from the host.
+  // It is shown in the process name so the usable listen address can be copied
+  // straight from a process list, since the actual bind is 0.0.0.0.
+  [[nodiscard]] fn spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
+                               std::string_view reachable_ip)
       -> error_or<pid_t>;
 
   [[nodiscard]] fn save() const -> error_or<ok>;
@@ -70,6 +74,11 @@ public:
   }
   fn set_proxy_start_time(u64 s) -> void { m_proxy_start_time = s; }
 
+  [[nodiscard]] fn get_proxy_backend() const -> proxy_backend_kind {
+    return m_proxy_backend;
+  }
+  fn set_proxy_backend(proxy_backend_kind k) -> void { m_proxy_backend = k; }
+
 private:
   linux_namespace &m_ns;
   passwd &m_pw;
@@ -79,6 +88,7 @@ private:
   bool m_dns_on_monitor{false};
   pid_t m_proxy_pid{0};
   u64 m_proxy_start_time{0};
+  proxy_backend_kind m_proxy_backend{proxy_backend_kind::builtin};
 
   fn enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>;
 

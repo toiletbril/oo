@@ -134,4 +134,31 @@ fn ip_pool::free(subnet s) -> error_or<ok> {
   return ok{};
 }
 
+fn ip_pool::reassign(subnet s, std::string_view from_owner) -> error_or<ok> {
+  trace(verbosity::debug, "reassign({}/{}) from '{}' to '{}'",
+        s.get_third_octet(), s.get_prefix_len(), from_owner, m_ns.get_name());
+  if (!m_lock.is_held()) {
+    return make_error("Cannot reassign: IP pool lock not held");
+  }
+  unwrap(m_file.load());
+
+  const std::string key = pool_key(s.get_third_octet());
+  let owner = m_file.find(key);
+  if (!owner.has_value()) {
+    return make_error("Subnet " + key + " was not allocated");
+  }
+  if (*owner != from_owner) {
+    return make_error("Subnet " + key + " is owned by '" + *owner + "', not '" +
+                      std::string{from_owner} + "'");
+  }
+
+  m_file.set(key, m_ns.get_name());
+  // Flush here rather than on destruction so a write failure is reported to the
+  // caller instead of being swallowed by ~ini_file.
+  unwrap(m_file.flush());
+  trace(verbosity::info, "Reassigned subnet {} to '{}'", key, m_ns.get_name());
+
+  return ok{};
+}
+
 } // namespace oo

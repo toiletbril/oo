@@ -363,8 +363,8 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
   return ok{};
 }
 
-fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
-    -> error_or<pid_t> {
+fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
+                      std::string_view reachable_ip) -> error_or<pid_t> {
   insist(m_daemon_pid > 0, "spawn_proxy requires a known daemon PID");
   trace(verbosity::info, "Spawning proxy for namespace '{}'", m_ns.get_name());
 
@@ -384,7 +384,7 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
 
     pipe_rd.reset(-1);
 
-    let serve = [this, &bind, kind, &pipe_wr]() -> error_or<ok> {
+    let serve = [this, &bind, kind, reachable_ip, &pipe_wr]() -> error_or<ok> {
       unwrap(linux::oo_setsid());
 
       if (let log_dir = m_ns.get_path(); !log_dir.is_err()) {
@@ -408,7 +408,13 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind)
 
       let p = make_proxy(kind, m_ns, m_daemon_pid);
 
-      linux::set_process_name("oo: http proxy on " + bind.to_string() + " [" +
+      // Show the host-reachable namespace address rather than the 0.0.0.0 bind,
+      // so the listen address can be copied straight from the process list.
+      const std::string listen_addr =
+          reachable_ip.empty()
+              ? bind.to_string()
+              : std::string{reachable_ip} + ":" + std::to_string(bind.port);
+      linux::set_process_name("oo: http proxy on " + listen_addr + " [" +
                               m_ns.get_name() + "]");
 
       // Bind while still privileged so any port works and a bind failure is
@@ -494,6 +500,8 @@ fn satan::save() const -> error_or<ok> {
   file.set("dns_on_monitor", m_dns_on_monitor ? "1" : "0");
   file.set("proxy_pid", std::to_string(m_proxy_pid));
   file.set("proxy_start_time", std::to_string(m_proxy_start_time));
+  file.set("proxy_backend",
+           m_proxy_backend == proxy_backend_kind::squid ? "squid" : "builtin");
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
@@ -539,6 +547,13 @@ fn satan::load() -> error_or<ok> {
   if (let v = file.find("proxy_start_time")) {
     insist(!v->empty(), "proxy_start_time entry must have a non-empty value");
     m_proxy_start_time = unwrap(parse_u64_field("proxy_start_time", *v));
+  }
+  if (let v = file.find("proxy_backend")) {
+    // Default to builtin on a missing or unrecognized value rather than failing
+    // the load, since the backend is only used for reporting.
+    if (let b = parse_proxy_backend(*v); !b.is_err()) {
+      m_proxy_backend = b.get_value();
+    }
   }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());

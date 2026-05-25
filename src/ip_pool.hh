@@ -52,6 +52,12 @@ public:
   fn allocate() -> error_or<subnet>;
   fn free(subnet s) -> error_or<ok>;
 
+  // Transfer ownership of an already allocated subnet to this handle's
+  // namespace. Verifies the subnet is currently owned by `from_owner`, then
+  // rewrites the owner to the current namespace name. Used by the rename path,
+  // which keeps the subnet but changes the namespace name that owns it.
+  fn reassign(subnet s, std::string_view from_owner) -> error_or<ok>;
+
 private:
   static constexpr const char *POOL_FILE = "/var/run/oo/ip-pool.ini";
   // SECURITY: Lock file serializes concurrent oo processes that would

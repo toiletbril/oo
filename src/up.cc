@@ -244,9 +244,11 @@ fn up(cli::cli &&cli) -> error_or<ok> {
         unused(linux::oo_kill(-proxy_pid, SIGKILL));
       }
     });
-    proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend));
+    proxy_pid =
+        unwrap(s.spawn_proxy(proxy_bind, proxy_backend, subnet.ns_ip()));
     s.set_proxy_pid(proxy_pid);
     s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
+    s.set_proxy_backend(proxy_backend);
   }
 
   unwrap(s.save());
@@ -258,10 +260,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
                     "` is up. Daemon PID: " + std::to_string(daemon_pid) + ".");
 
   if (flag_http_proxy.is_set()) {
-    const std::string backend_name =
-        proxy_backend == proxy_backend_kind::squid ? "squid" : "builtin";
-    cli::show_message("HTTP proxy (" + backend_name + ") listening on " +
-                      subnet.ns_ip() + ":" + std::to_string(proxy_bind.port) +
+    cli::show_message("HTTP proxy listening on " + subnet.ns_ip() + ":" +
+                      std::to_string(proxy_bind.port) +
                       ". Proxy PID: " + std::to_string(proxy_pid) + ".");
   }
 

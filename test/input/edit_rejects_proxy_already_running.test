@@ -1,0 +1,17 @@
+#!/bin/sh
+# Verify that a plain `oo edit --http-proxy` is rejected when a proxy already
+# runs, so a second listener is not started behind the first.
+
+NS="ea"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:18085 -- sleep 30
+
+if "$BIN" $FLAGS edit "$NS" --http-proxy=0.0.0.0:18086; then
+  echo "second proxy: accepted (FAILED)"
+else
+  echo "second proxy: rejected (ok)"
+fi

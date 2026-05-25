@@ -1,0 +1,37 @@
+#!/bin/sh
+# Verify that `oo edit --http-proxy` starts a proxy on an already running
+# namespace, and that `oo edit --shutdown-proxy` stops it and clears the
+# recorded proxy pid.
+
+NS="eh"
+
+cleanup() { "$BIN" $FLAGS down "$NS" || true; }
+"$BIN" $FLAGS down "$NS" || true
+trap cleanup EXIT
+
+"$BIN" $FLAGS up "$NS" -- sleep 30
+
+"$BIN" $FLAGS edit "$NS" --http-proxy=0.0.0.0:18082
+
+PROXY_PID=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+if [ -n "$PROXY_PID" ] && [ "$PROXY_PID" -gt 0 ] 2>/dev/null &&
+   kill -0 "$PROXY_PID" 2>/dev/null; then
+  echo "edit started proxy (ok)"
+else
+  echo "edit started proxy (FAILED $PROXY_PID)"
+fi
+
+"$BIN" $FLAGS edit "$NS" --shutdown-proxy
+sleep 1
+
+CLEARED=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
+if kill -0 "$PROXY_PID" 2>/dev/null; then
+  echo "edit stopped proxy (FAILED still alive)"
+else
+  echo "edit stopped proxy (ok)"
+fi
+if [ "$CLEARED" = "0" ]; then
+  echo "proxy pid cleared (ok)"
+else
+  echo "proxy pid cleared=$CLEARED (FAILED)"
+fi
