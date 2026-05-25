@@ -1,4 +1,4 @@
-old namespace removed (ok)
-new namespace running (ok)
-subnet preserved (ok)
-pool ownership transferred (ok)
+old namespace removed.*ok
+new namespace running.*ok
+subnet preserved.*ok
+pool ownership transferred.*ok

@@ -64,16 +64,26 @@ jobs:
           {
             for d in test test/root; do
               if test -s "$d/failed.diff"; then
-                echo "### $d/failed.diff"
+                echo "<details open>"
+                echo "<summary>$d/failed.diff</summary>"
+                echo
                 echo '```diff'
                 cat "$d/failed.diff"
                 echo '```'
+                echo
+                echo "</details>"
+                echo
               fi
               if test -s "$d/trace.log"; then
-                echo "### $d/trace.log"
+                echo "<details>"
+                echo "<summary>$d/trace.log</summary>"
+                echo
                 echo '```log'
                 cat "$d/trace.log"
                 echo '```'
+                echo
+                echo "</details>"
+                echo
               fi
             done
           } >> "$GITHUB_STEP_SUMMARY"

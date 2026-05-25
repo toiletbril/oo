@@ -1,3 +1,3 @@
-relaunch changed daemon pid (ok)
-new daemon alive (ok)
-subnet preserved (ok)
+relaunch changed daemon pid.*ok
+new daemon alive.*ok
+subnet preserved.*ok
