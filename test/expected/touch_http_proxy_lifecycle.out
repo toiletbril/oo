@@ -1,0 +1,3 @@
+touch started proxy.*ok
+touch stopped proxy.*ok
+proxy pid cleared.*ok

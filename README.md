@@ -48,13 +48,22 @@ $ oo [subcommand] --help
 To start a daemon inside a fresh namespace:
 ```console
 $ oo up vpn -- openvpn /etc/openvpn/client.conf
-oo: Namespace `vpn` is up. Daemon PID: 1234.
+oo: Namespace `vpn` is up. Daemon PID is 1234.
+oo: Daemon logs follow.
 ```
 
 This creates a network namespace named `vpn`, sets up a `veth` pair with NAT
 through the host's default interface, and launches the daemon inside it. The
 daemon runs with its own private network stack. Its stdout and stderr are
 written to `/var/run/oo/vpn/stdout` and `/var/run/oo/vpn/stderr`.
+
+By default `oo up` stays attached, tails the daemon output to your terminal,
+and tears the namespace down when the daemon exits. To detach and return to
+the shell right away, pass `--background` (`-d`). The daemon then keeps running
+until `oo down`:
+```console
+$ oo up vpn -d -- openvpn /etc/openvpn/client.conf
+```
 
 To use custom DNS, pass `--dns` (repeatable) or `--dns-file`, which
 bind-mounts the given file as `/etc/resolv.conf` inside the namespace and
@@ -85,9 +94,9 @@ reachable from the host at the namespace IP. Every request it forwards resolves
 through the namespace's DNS and leaves through the namespace's default route and
 NAT:
 ```console
-$ oo up vpn --http-proxy=0.0.0.0:8080 -- openvpn /etc/openvpn/client.conf
-oo: Namespace `vpn` is up. Daemon PID: 1234.
-oo: HTTP proxy (builtin) listening on 10.0.0.2:8080. Proxy PID: 1235.
+$ oo up vpn -d --http-proxy=0.0.0.0:8080 -- openvpn /etc/openvpn/client.conf
+oo: Namespace `vpn` is up. Daemon PID is 1234.
+oo: HTTP proxy is listening on 10.0.0.2:8080 with PID 1235.
 $ curl -x 10.0.0.2:8080 https://example.com
 ```
 
@@ -107,6 +116,35 @@ command's own exit code:
 ```console
 $ oo exec vpn -- curl https://example.com
 ```
+
+To see the state of every namespace, or of one in particular, use `status`:
+```console
+$ oo status
+vpn: daemon is alive, proxy is alive, 10.0.0.2
+$ oo status vpn
+Namespace `vpn`
+  Daemon PID:   1234 (alive)
+  Proxy:        1235 (alive), builtin
+  Host IP:      10.0.0.1
+  Namespace IP: 10.0.0.2
+```
+
+To attach to or change a running namespace, use `touch`. With no flags it
+attaches to the daemon and tails its output, the same way `oo up` does. The
+flags let you manage the namespace without taking it down. Stop the proxy with
+`--shutdown-proxy`, replace it with `--restart-proxy` together with a new
+`--http-proxy`, or start one where there was none by passing `--http-proxy`
+alone. Rebuild the network and respawn the daemon on the same subnet with
+`--relaunch-daemon` and the daemon command after `--`, and rename the namespace
+at the same time with `--set-name`:
+```console
+$ oo touch vpn
+$ oo touch vpn --restart-proxy --http-proxy=0.0.0.0:8080
+$ oo touch vpn --relaunch-daemon --set-name=work -- openvpn /etc/openvpn/work.conf
+```
+
+A relaunch stays attached and tails the new daemon like `oo up`. Pass
+`--background` (`-d`) to detach instead.
 
 To shut the daemon down and tear the namespace down:
 ```console

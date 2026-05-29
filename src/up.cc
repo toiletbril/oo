@@ -4,6 +4,7 @@
 #include "constants.hh"
 #include "debug.hh"
 #include "dominatrix.hh"
+#include "foreground.hh"
 #include "ip_pool.hh"
 #include "linux_namespace.hh"
 #include "network_configurator.hh"
@@ -48,6 +49,11 @@ fn up(cli::cli &&cli) -> error_or<ok> {
   let &flag_proxy_backend = cli.add_flag<cli::flag_string>(
       '\0', "http-proxy-backend",
       "Proxy implementation for --http-proxy: 'builtin' (default) or 'squid'.");
+  let &flag_background = cli.add_flag<cli::flag_boolean>(
+      'd', "background",
+      "Detach and return immediately. Default is to stay attached, tail the "
+      "daemon output to this terminal, forward signals to the daemon group, "
+      "and tear the namespace down when the daemon exits.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -244,8 +250,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
         unused(linux::oo_kill(-proxy_pid, SIGKILL));
       }
     });
-    proxy_pid =
-        unwrap(s.spawn_proxy(proxy_bind, proxy_backend, subnet.ns_ip()));
+    proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend, subnet.ns_ip(),
+                                     netconf.get_default_iface()));
     s.set_proxy_pid(proxy_pid);
     s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
     s.set_proxy_backend(proxy_backend);
@@ -256,16 +262,40 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   guard.disarm();
 
-  cli::show_message("Namespace `" + ns.get_name() +
-                    "` is up. Daemon PID: " + std::to_string(daemon_pid) + ".");
-
+  std::string msg{};
+  msg += "Namespace `";
+  msg += ns.get_name();
+  msg += "` is up. Daemon PID is ";
+  msg += std::to_string(daemon_pid);
+  msg += ".";
   if (flag_http_proxy.is_set()) {
-    cli::show_message("HTTP proxy listening on " + subnet.ns_ip() + ":" +
-                      std::to_string(proxy_bind.port) +
-                      ". Proxy PID: " + std::to_string(proxy_pid) + ".");
+    msg += " HTTP proxy is listening on ";
+    msg += subnet.ns_ip();
+    msg += ":";
+    msg += std::to_string(proxy_bind.port);
+    msg += " with PID ";
+    msg += std::to_string(proxy_pid);
+    msg += ".";
   }
 
-  return ok{};
+  cli::show_message(msg);
+
+  if (flag_background.is_enabled()) {
+    return ok{};
+  }
+
+  cli::show_message("Daemon logs follow.");
+
+  // Drop the cross-process ip-pool lock before the long supervise wait so
+  // a concurrent oo up, oo down, or oo touch on any namespace does not have
+  // to block for the foreground daemon's whole lifetime. run_teardown
+  // builds a fresh ip_pool to reacquire the lock briefly when the daemon
+  // exits.
+  unwrap(pool.release());
+
+  return attach_and_supervise(daemon_pid, s.get_daemon_start_time(),
+                              s.get_proxy_pid(), s.get_proxy_start_time(), ns,
+                              netconf, subnet, pw, false);
 }
 
 } // namespace oo

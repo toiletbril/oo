@@ -8,9 +8,9 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
-if "$BIN" $FLAGS up "$NS" -- sleep 3; then
+if "$BIN" $FLAGS up -d "$NS" -- sleep 3; then
   echo "second up: accepted (FAILED)"
 else
   echo "second up: rejected (ok)"

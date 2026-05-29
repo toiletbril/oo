@@ -13,8 +13,8 @@ cleanup() {
 "$BIN" $FLAGS down "$NS2" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS1" -- sleep 2 &
-"$BIN" $FLAGS up "$NS2" -- sleep 2 &
+"$BIN" $FLAGS up -d "$NS1" -- sleep 2 &
+"$BIN" $FLAGS up -d "$NS2" -- sleep 2 &
 wait
 
 SUB1=$(grep '^subnet_octet=' "/var/run/oo/$NS1/network.ini" | cut -d= -f2)

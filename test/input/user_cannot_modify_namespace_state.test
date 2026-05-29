@@ -9,7 +9,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 PIDS="/var/run/oo/$NS/pids.ini"
 

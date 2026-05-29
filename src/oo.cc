@@ -3,12 +3,12 @@
 #include "constants.hh"
 #include "debug.hh"
 #include "down.hh"
-#include "edit.hh"
 #include "error.hh"
 #include "exec.hh"
 #include "init.hh"
 #include "linux_util.hh"
 #include "status.hh"
+#include "touch.hh"
 #include "up.hh"
 
 #include <csignal>
@@ -26,10 +26,10 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
                    "Remove namespace and shutdown the daemon.");
   cli.add_use_case("oo [-options] exec [-options] <namespace> [--] <command>",
                    "Execute a command inside a namespace.");
-  cli.add_use_case("oo [-options] edit [-options] <namespace> [--] [command]",
-                   "Edit a running namespace.");
+  cli.add_use_case("oo [-options] touch [-options] <namespace> [--] [command]",
+                   "Attach to or mess with running namespace.");
   cli.add_use_case("oo [-options] status [<namespace>]",
-                   "Show the state of one namespace, or list all of them.");
+                   "Show namespace state.");
   cli.add_use_case("oo [-options] init [-options]",
                    "Give necessary capabilities to the oo binary.");
 
@@ -83,9 +83,9 @@ static fn entry(cli::cli &&cli) -> error_or<ok> {
     return exec(std::move(cli));
   }
 
-  string_case("edit"):
-  string_case("x"): {
-    return edit(std::move(cli));
+  string_case("touch"):
+  string_case("t"): {
+    return touch(std::move(cli));
   }
 
   string_case("status"):

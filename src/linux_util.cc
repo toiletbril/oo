@@ -117,10 +117,26 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
   unused(oo_linux_syscall(setenv, "LANG", "C", 1));
   unused(oo_linux_syscall(setenv, "LC_ALL", "C", 1));
 
-  // oo ignores SIGPIPE process-wide (see main), and SIG_IGN survives execve.
-  // Restore the default so the exec'd program gets normal SIGPIPE behavior
-  // rather than silently inheriting oo's ignore disposition.
+  // oo ignores SIGPIPE process-wide (see main) and foreground supervise
+  // ignores SIGINT, SIGTERM, and SIGHUP in the parent. SIG_IGN survives
+  // execve, so reset every disposition oo might have flipped before
+  // handing control to the exec'd program. Without this, a child binary
+  // invoked from a foreground supervise context would silently inherit
+  // the ignore and stop responding to Ctrl-C.
   unused(::signal(SIGPIPE, SIG_DFL));
+  unused(::signal(SIGINT, SIG_DFL));
+  unused(::signal(SIGTERM, SIG_DFL));
+  unused(::signal(SIGHUP, SIG_DFL));
+
+  // Label the process during the pre-exec window. A successful execvp
+  // replaces this with the target binary's own name, but until then, and
+  // if exec fails, the process shows which command oo is about to run
+  // rather than the inherited parent name. Strip the directory so only the
+  // command name shows.
+  std::string_view path = args[0];
+  let slash = path.find_last_of('/');
+  let command = slash == std::string_view::npos ? path : path.substr(slash + 1);
+  set_process_name("oo execvp: " + std::string{command});
 
   let ret = oo_linux_syscall(::execvp, os_args[0],
                              const_cast<char *const *>(os_args.data()));
@@ -132,7 +148,12 @@ fn oo_exec(const std::vector<std::string> &args) -> error_or<ok> {
 
 fn oo_kill(pid_t pid, int signal) -> error_or<ok> {
   trace_variables(verbosity::debug, pid, signal);
-  unwrap(oo_linux_syscall(kill, pid, signal));
+  let ret = oo_linux_syscall(kill, pid, signal);
+  if (ret.is_err()) {
+    return make_error("Cannot send signal " + std::to_string(signal) +
+                      " to process " + std::to_string(pid) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
@@ -143,14 +164,23 @@ fn oo_sleep_ms(int milliseconds) -> error_or<ok> {
 }
 
 fn oo_open(const char *path, int flags) -> error_or<fd> {
-  trace_variables(verbosity::debug, path, flags);
   insist(path != nullptr, "oo_open requires a non-null path. Fuck you");
-  return oo_linux_syscall(open, path, flags);
+  trace_variables(verbosity::debug, path, flags);
+  let ret = oo_linux_syscall(open, path, flags);
+  if (ret.is_err()) {
+    return make_error("Cannot open " + std::string{path} + ": " +
+                      ret.get_error().get_owned_reason());
+  }
+  return ret.get_value();
 }
 
 fn oo_close(fd fd) -> error_or<ok> {
   trace_variables(verbosity::debug, fd);
-  unwrap(oo_linux_syscall(close, fd));
+  let ret = oo_linux_syscall(close, fd);
+  if (ret.is_err()) {
+    return make_error("Cannot close descriptor " + std::to_string(fd) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
@@ -172,35 +202,52 @@ fn oo_pipe() -> error_or<std::pair<oo_fd, oo_fd>> {
 
 fn oo_dup2(int src, int dst) -> error_or<ok> {
   trace_variables(verbosity::debug, src, dst);
-  unwrap(oo_linux_syscall(dup2, src, dst));
+  let ret = oo_linux_syscall(dup2, src, dst);
+  if (ret.is_err()) {
+    return make_error("Cannot dup2() fd " + std::to_string(src) + " onto fd " +
+                      std::to_string(dst) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
 fn oo_read(int fd, void *buf, usize count) -> error_or<ssize_t> {
-  let result = oo_linux_syscall(read, fd, buf, count);
-  if (result.is_err())
-    return result.get_error();
-  return static_cast<ssize_t>(result.get_value());
+  let ret = oo_linux_syscall(read, fd, buf, count);
+  if (ret.is_err()) {
+    return make_error("Cannot read " + std::to_string(count) +
+                      " bytes from descriptor " + std::to_string(fd) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
+  return static_cast<ssize_t>(ret.get_value());
 }
 
 fn oo_write(int fd, const void *buf, usize count) -> error_or<ssize_t> {
-  let result = oo_linux_syscall(write, fd, buf, count);
-  if (result.is_err())
-    return result.get_error();
-  return static_cast<ssize_t>(result.get_value());
+  let ret = oo_linux_syscall(write, fd, buf, count);
+  if (ret.is_err()) {
+    return make_error("Cannot write " + std::to_string(count) +
+                      " bytes to descriptor " + std::to_string(fd) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
+  return static_cast<ssize_t>(ret.get_value());
 }
 
 fn oo_waitpid(pid_t pid, int *status, int options) -> error_or<pid_t> {
   trace_variables(verbosity::debug, pid, options);
-  let result = oo_linux_syscall(waitpid, pid, status, options);
-  if (result.is_err())
-    return result.get_error();
-  return static_cast<pid_t>(result.get_value());
+  let ret = oo_linux_syscall(waitpid, pid, status, options);
+  if (ret.is_err()) {
+    return make_error("Cannot wait for process " + std::to_string(pid) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
+  return static_cast<pid_t>(ret.get_value());
 }
 
 fn oo_setuid(uid_t uid) -> error_or<ok> {
   trace_variables(verbosity::debug, uid);
-  unwrap(oo_linux_syscall(setuid, uid));
+  let ret = oo_linux_syscall(setuid, uid);
+  if (ret.is_err()) {
+    return make_error("Cannot set UID to " + std::to_string(uid) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
@@ -213,13 +260,23 @@ fn oo_setsid() -> error_or<pid_t> {
 
 fn oo_unshare(int flags) -> error_or<ok> {
   trace_variables(verbosity::debug, flags);
-  unwrap(oo_linux_syscall(::unshare, flags));
+  let ret = oo_linux_syscall(::unshare, flags);
+  if (ret.is_err()) {
+    return make_error("Cannot unshare flags " + std::to_string(flags) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
 fn oo_setns(int fd, int nstype) -> error_or<ok> {
   trace_variables(verbosity::debug, fd, nstype);
-  unwrap(oo_linux_syscall(setns, fd, nstype));
+  let ret = oo_linux_syscall(setns, fd, nstype);
+  if (ret.is_err()) {
+    return make_error("Cannot set namespace with descriptor " +
+                      std::to_string(fd) + " and type " +
+                      std::to_string(nstype) + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 
@@ -227,7 +284,9 @@ fn oo_lseek(int fd, off_t offset, int whence) -> error_or<off_t> {
   trace_variables(verbosity::debug, fd, offset, whence);
   off_t ret = ::lseek(fd, offset, whence);
   if (ret == (off_t)-1) {
-    return make_error("`lseek()` failed: " + get_errno_string());
+    return make_error("Cannot seek descriptor " + std::to_string(fd) +
+                      " to offset " + std::to_string(offset) + " (whence " +
+                      std::to_string(whence) + "): " + get_errno_string());
   }
   return ret;
 }
@@ -235,7 +294,11 @@ fn oo_lseek(int fd, off_t offset, int whence) -> error_or<off_t> {
 fn oo_chdir(const char *path) -> error_or<ok> {
   insist(path != nullptr, "oo_chdir requires a non-null path");
   trace_variables(verbosity::debug, path);
-  unwrap(oo_linux_syscall(chdir, path));
+  let ret = oo_linux_syscall(chdir, path);
+  if (ret.is_err()) {
+    return make_error("Cannot change directory to " + std::string{path} + ": " +
+                      ret.get_error().get_owned_reason());
+  }
   return ok{};
 }
 

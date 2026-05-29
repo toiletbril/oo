@@ -7,7 +7,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-if "$BIN" $FLAGS up "$NS" --dns-file=/tmp -- sleep 1; then
+if "$BIN" $FLAGS up -d "$NS" --dns-file=/tmp -- sleep 1; then
   echo "dns-file directory: accepted (FAILED)"
 else
   echo "dns-file directory: rejected (ok)"

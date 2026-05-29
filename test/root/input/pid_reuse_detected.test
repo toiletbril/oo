@@ -11,7 +11,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 30
+"$BIN" $FLAGS up -d "$NS" -- sleep 30
 ORIG=$(grep '^daemon_pid=' "$PIDS" | cut -d= -f2)
 
 sed -i 's/^daemon_pid=.*/daemon_pid=1/' "$PIDS"

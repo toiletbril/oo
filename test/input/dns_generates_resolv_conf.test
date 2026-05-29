@@ -7,7 +7,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" --dns=1.1.1.1 --dns=8.8.8.8 -- sleep 3
+"$BIN" $FLAGS up -d "$NS" --dns=1.1.1.1 --dns=8.8.8.8 -- sleep 3
 
 RESOLV="/var/run/oo/$NS/resolv.conf"
 

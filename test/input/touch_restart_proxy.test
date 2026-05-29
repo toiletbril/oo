@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify that `oo edit --restart-proxy` replaces a running proxy: the old proxy
+# Verify that `oo touch --restart-proxy` replaces a running proxy: the old proxy
 # dies and a new one with a different pid is recorded and alive.
 
 NS="ep"
@@ -8,11 +8,11 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:18083 -- sleep 30
+"$BIN" $FLAGS up -d "$NS" --http-proxy=0.0.0.0:18083 -- sleep 30
 OLD=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 OLD_ST=$(grep '^proxy_start_time=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 
-"$BIN" $FLAGS edit "$NS" --restart-proxy --http-proxy=0.0.0.0:18084
+"$BIN" $FLAGS touch "$NS" --restart-proxy --http-proxy=0.0.0.0:18084
 sleep 1
 NEW=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 NEW_ST=$(grep '^proxy_start_time=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)

@@ -5,6 +5,6 @@
 
 namespace oo {
 
-fn edit(cli::cli &&cli) -> error_or<ok>;
+fn touch(cli::cli &&cli) -> error_or<ok>;
 
 } // namespace oo

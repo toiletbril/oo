@@ -176,8 +176,6 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     unused(oo_linux_syscall(sigaction, SIGINT, &sa, nullptr));
     unused(oo_linux_syscall(sigaction, SIGHUP, &sa, nullptr));
 
-    linux::set_process_name("oo: daemon monitor [" + m_ns.get_name() + "]");
-
     pipe_rd.reset(-1);
     let ret = start_daemon(m_ns);
     if (ret.is_err()) {
@@ -193,6 +191,11 @@ fn satan::spawn_daemon(const std::vector<std::string> &daemonized_argv,
     insist(!ret.is_err(), "daemon_pid extraction requires the success branch");
     let daemon_pid = ret.get_value();
     insist(daemon_pid > 0, "start_daemon must return a valid child PID");
+
+    // Name the monitor only now that the daemon pid is known, so a process
+    // list ties this reaper to the daemon it supervises.
+    linux::set_process_name("oo: supervisor for daemon process " +
+                            std::to_string(daemon_pid));
 
     // The daemon was forked before this point, so it does not inherit the
     // mount ns set up here. Bind the DNS config in the monitor's own mount
@@ -364,7 +367,8 @@ fn satan::enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok> {
 }
 
 fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
-                      std::string_view reachable_ip) -> error_or<pid_t> {
+                      std::string_view reachable_ip,
+                      std::string_view default_route) -> error_or<pid_t> {
   insist(m_daemon_pid > 0, "spawn_proxy requires a known daemon PID");
   trace(verbosity::info, "Spawning proxy for namespace '{}'", m_ns.get_name());
 
@@ -384,14 +388,15 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
 
     pipe_rd.reset(-1);
 
-    let serve = [this, &bind, kind, reachable_ip, &pipe_wr]() -> error_or<ok> {
+    let serve = [this, &bind, kind, reachable_ip, default_route,
+                 &pipe_wr]() -> error_or<ok> {
       unwrap(linux::oo_setsid());
 
       if (let log_dir = m_ns.get_path(); !log_dir.is_err()) {
         const std::string out_path =
-            (log_dir.get_value() / satan::PROXY_STDOUT_LOG).string();
+            (log_dir.get_value() / satan::STDOUT_LOG).string();
         const std::string err_path =
-            (log_dir.get_value() / satan::PROXY_STDERR_LOG).string();
+            (log_dir.get_value() / satan::STDERR_LOG).string();
         linux::oo_fd out_fd{::open(
             out_path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644)};
         if (out_fd.is_valid()) {
@@ -414,8 +419,10 @@ fn satan::spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
           reachable_ip.empty()
               ? bind.to_string()
               : std::string{reachable_ip} + ":" + std::to_string(bind.port);
-      linux::set_process_name("oo: http proxy on " + listen_addr + " [" +
-                              m_ns.get_name() + "]");
+      const std::string route =
+          default_route.empty() ? "unknown" : std::string{default_route};
+      linux::set_process_name("oo: namespace http proxy " + listen_addr +
+                              " for default route " + route);
 
       // Bind while still privileged so any port works and a bind failure is
       // reported to the parent before privileges are dropped.
@@ -581,6 +588,18 @@ fn satan::sweep_orphans() -> error_or<ok> {
     const std::string name = entry.path().filename().string();
     linux_namespace probe_ns{name};
     satan probe{probe_ns, m_pw};
+
+    // Skip namespace directories that exist but have no pids.ini. Such a
+    // dir is either being created by a concurrent up or touch between
+    // create_dir and save, or it is leftover from a setup that crashed
+    // before the first save. The concurrent-setup case must not be moved
+    // out from under the other process, and the crash case is already
+    // caught when the user runs `oo up` on the same name, which refuses
+    // to adopt a dir with no oo state.
+    std::error_code pf_ec;
+    if (!std::filesystem::exists(entry.path() / PID_FILE, pf_ec) || pf_ec) {
+      continue;
+    }
 
     bool orphan = false;
     if (probe.load().is_err()) {

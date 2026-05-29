@@ -40,6 +40,9 @@ public:
   [[nodiscard]] fn get_subnet_prefix() const -> u8 {
     return m_subnet.get_prefix_len();
   }
+  [[nodiscard]] fn get_default_iface() const -> std::string_view {
+    return m_default_iface;
+  }
   [[nodiscard]] fn get_netlinker() -> netlinker & { return m_netlinker; }
 
 private:

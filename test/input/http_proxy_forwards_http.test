@@ -19,7 +19,7 @@ cleanup() {
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:$PROXY_PORT -- sleep 30
+"$BIN" $FLAGS up -d "$NS" --http-proxy=0.0.0.0:$PROXY_PORT -- sleep 30
 
 OCTET=$(grep '^subnet_octet=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)
 HOST_IP="10.0.${OCTET}.1"

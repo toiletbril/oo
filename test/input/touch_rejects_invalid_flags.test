@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify that invalid `oo edit` flag combinations are rejected. Errors go to
+# Verify that invalid `oo touch` flag combinations are rejected. Errors go to
 # stderr (captured to trace.log by the Makefile); each case prints an ok/FAILED
 # line to stdout based on exit status.
 
@@ -12,7 +12,7 @@ trap cleanup EXIT
 check_rejected() {
   label=$1
   shift
-  if "$BIN" $FLAGS edit "$@"; then
+  if "$BIN" $FLAGS touch "$@"; then
     echo "$label: accepted (FAILED)"
   else
     echo "$label: rejected (ok)"

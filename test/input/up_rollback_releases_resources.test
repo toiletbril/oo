@@ -9,7 +9,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-if "$BIN" $FLAGS up "$NS" -- /nonexistent/oo-missing-daemon; then
+if "$BIN" $FLAGS up -d "$NS" -- /nonexistent/oo-missing-daemon; then
   echo "up with bad daemon: accepted (FAILED)"
 else
   echo "up with bad daemon: rejected (ok)"

@@ -13,7 +13,7 @@ trap cleanup EXIT
 INVOKING_UID=$(id -u)
 OORUNNER_UID=$(id -u oorunner)
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 DAEMON_UID=$(awk '/^Uid:/ {print $2}' "/proc/$DAEMON_PID/status")

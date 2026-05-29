@@ -8,7 +8,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 if grep -q '^hosts: files dns$' "/var/run/oo/$NS/nsswitch.conf"; then
   echo "nsswitch generated (ok)"

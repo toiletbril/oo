@@ -23,7 +23,7 @@ else
   echo "/var/run/oo owner: $PARENT_OWNER (FAILED)"
 fi
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 NS_OWNER=$(stat -c '%U' "/var/run/oo/$NS")
 if test "$NS_OWNER" = "oorunner"; then

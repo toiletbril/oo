@@ -8,7 +8,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" --http-proxy=0.0.0.0:18080 -- sleep 30
+"$BIN" $FLAGS up -d "$NS" --http-proxy=0.0.0.0:18080 -- sleep 30
 
 PROXY_PID=$(grep '^proxy_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 

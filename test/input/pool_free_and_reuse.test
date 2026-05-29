@@ -11,7 +11,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 "$BIN" $FLAGS down "$NS"
 
 if grep -q "=${NS}\$" "$POOL"; then
@@ -20,7 +20,7 @@ else
   echo "pool entry freed on down: ok"
 fi
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 if grep -q "=${NS}\$" "$POOL"; then
   echo "pool entry reallocated on re-up: ok"

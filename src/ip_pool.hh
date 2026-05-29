@@ -52,6 +52,13 @@ public:
   fn allocate() -> error_or<subnet>;
   fn free(subnet s) -> error_or<ok>;
 
+  // Flush pending changes and drop the cross-process file lock. After
+  // release any further allocate, free, or reassign call returns an error.
+  // The destructor remains safe to run after release. Foreground supervise
+  // uses this to drop the lock for the daemon's full lifetime rather than
+  // blocking every concurrent up, down, and touch on the host.
+  [[nodiscard]] fn release() -> error_or<ok>;
+
   // Transfer ownership of an already allocated subnet to this handle's
   // namespace. Verifies the subnet is currently owned by `from_owner`, then
   // rewrites the owner to the current namespace name. Used by the rename path,

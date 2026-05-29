@@ -8,7 +8,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" -- sleep 3
 
 if ip link show "veth-${NS}-host" >/dev/null; then
   echo "host veth veth-${NS}-host: ok"

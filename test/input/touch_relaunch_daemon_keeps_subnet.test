@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify that `oo edit --relaunch-daemon` replaces the daemon process while
+# Verify that `oo touch --relaunch-daemon` replaces the daemon process while
 # keeping the same subnet octet.
 
 NS="rl"
@@ -8,11 +8,11 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 30
+"$BIN" $FLAGS up -d "$NS" -- sleep 30
 OLD_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 OLD_OCTET=$(grep '^subnet_octet=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)
 
-"$BIN" $FLAGS edit "$NS" --relaunch-daemon -- sleep 30
+"$BIN" $FLAGS touch -d "$NS" --relaunch-daemon -- sleep 30
 sleep 1
 NEW_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 NEW_OCTET=$(grep '^subnet_octet=' "/var/run/oo/$NS/network.ini" | cut -d= -f2)

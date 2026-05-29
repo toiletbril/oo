@@ -15,7 +15,7 @@ trap cleanup EXIT
 
 mkdir -p "$DIR"
 
-if "$BIN" $FLAGS up "$NS" -- sleep 1; then
+if "$BIN" $FLAGS up -d "$NS" -- sleep 1; then
   echo "up adopted foreign dir: accepted (FAILED)"
 else
   echo "up refused foreign dir: rejected (ok)"

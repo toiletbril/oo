@@ -134,6 +134,18 @@ fn ip_pool::free(subnet s) -> error_or<ok> {
   return ok{};
 }
 
+fn ip_pool::release() -> error_or<ok> {
+  // Flush before releasing the lock so another process never observes a
+  // stale on-disk pool while we still hold an unflushed in-memory state.
+  // Idempotent: a second call from the destructor path is a no-op because
+  // m_lock.is_held returns false after the release below.
+  if (m_lock.is_held()) {
+    unwrap(m_file.flush());
+    unwrap(m_lock.release());
+  }
+  return ok{};
+}
+
 fn ip_pool::reassign(subnet s, std::string_view from_owner) -> error_or<ok> {
   trace(verbosity::debug, "reassign({}/{}) from '{}' to '{}'",
         s.get_third_octet(), s.get_prefix_len(), from_owner, m_ns.get_name());

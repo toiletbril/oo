@@ -1,9 +1,10 @@
-#include "edit.hh"
+#include "touch.hh"
 
 #include "cli.hh"
 #include "constants.hh"
 #include "debug.hh"
 #include "dominatrix.hh"
+#include "foreground.hh"
 #include "ip_pool.hh"
 #include "linux_namespace.hh"
 #include "linux_util.hh"
@@ -55,9 +56,9 @@ fn stop_process_group(pid_t group) -> void {
 
 } // namespace
 
-fn edit(cli::cli &&cli) -> error_or<ok> {
-  cli.add_use_case("oo edit [-options] <namespace> [--] [daemon command]",
-                   "Edit a running namespace.");
+fn touch(cli::cli &&cli) -> error_or<ok> {
+  cli.add_use_case("oo touch [-options] <namespace> [--] [daemon command]",
+                   "Attach to or mess with running namespace.");
 
   let &flag_shutdown_proxy = cli.add_flag<cli::flag_boolean>(
       '\0', "shutdown-proxy", "Stop the running proxy.");
@@ -95,6 +96,12 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
   let &flag_proxy_backend = cli.add_flag<cli::flag_string>(
       '\0', "http-proxy-backend",
       "Proxy implementation for --http-proxy: 'builtin' (default) or 'squid'.");
+  let &flag_background = cli.add_flag<cli::flag_boolean>(
+      'd', "background",
+      "Detach and return immediately. Only meaningful with "
+      "--relaunch-daemon. Default for relaunch is to stay attached, tail the "
+      "daemon output to this terminal, and tear the namespace down when the "
+      "daemon exits.");
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 
   let args = unwrap(cli.parse_args());
@@ -114,12 +121,8 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
   const bool want_restart = flag_restart_proxy.is_enabled();
   const bool want_proxy = flag_http_proxy.is_set();
   const bool want_setname = flag_set_name.is_set();
-
-  if (!want_relaunch && !want_shutdown && !want_restart && !want_proxy &&
-      !want_setname) {
-    return make_error(
-        "Nothing to do. Pass an action flag. Try '--help' for the list.");
-  }
+  const bool want_attach = !want_relaunch && !want_shutdown && !want_restart &&
+                           !want_proxy && !want_setname;
 
   if (want_setname && !want_relaunch) {
     return make_error("--set-name is only valid together with "
@@ -128,6 +131,11 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
 
   if (flag_proxy_backend.is_set() && !want_proxy) {
     return make_error("--http-proxy-backend requires --http-proxy.");
+  }
+
+  if (flag_background.is_enabled() && !want_relaunch) {
+    return make_error(
+        "--background is only valid together with --relaunch-daemon.");
   }
 
   endpoint proxy_bind{};
@@ -144,7 +152,7 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
 
   unwrap(ensure_runtime_dir_exists());
 
-  // ---- relaunch mode ----
+  // relaunch mode.
   if (want_relaunch) {
     if (want_shutdown || want_restart) {
       return make_error("--shutdown-proxy and --restart-proxy cannot combine "
@@ -327,7 +335,8 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
           unused(linux::oo_kill(-proxy_pid, SIGKILL));
         }
       });
-      proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend, sn.ns_ip()));
+      proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend, sn.ns_ip(),
+                                       netconf.get_default_iface()));
       s.set_proxy_pid(proxy_pid);
       s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
       s.set_proxy_backend(proxy_backend);
@@ -352,10 +361,45 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
                         ". Proxy PID: " + std::to_string(proxy_pid) + ".");
     }
 
-    return ok{};
+    if (flag_background.is_enabled()) {
+      return ok{};
+    }
+
+    return attach_and_supervise(daemon_pid, s.get_daemon_start_time(),
+                                s.get_proxy_pid(), s.get_proxy_start_time(),
+                                target_ns, netconf, sn, pw, false);
   }
 
-  // ---- proxy mode ----
+  // attach mode. No action flag means attach to the existing daemon, tail
+  // its log files to this terminal, and tear the namespace down when the
+  // daemon exits.
+  if (want_attach) {
+    linux_namespace ns{ns_name};
+    unwrap(ns.validate_name());
+    passwd pw;
+    satan s{ns, pw};
+    if (s.load().is_err()) {
+      return make_error("Namespace '" + ns_name + "' is not running");
+    }
+    if (!pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
+                                               s.get_daemon_start_time())) {
+      return make_error("Namespace '" + ns_name + "' is not running");
+    }
+
+    network_configurator netconf{ns, subnet{0}};
+    if (netconf.load().is_err()) {
+      return make_error("Namespace '" + ns_name + "' is not running");
+    }
+    const subnet sn{netconf.get_subnet_octet(), netconf.get_subnet_prefix()};
+
+    unwrap(pw.su_oorunner());
+
+    return attach_and_supervise(s.get_daemon_pid(), s.get_daemon_start_time(),
+                                s.get_proxy_pid(), s.get_proxy_start_time(), ns,
+                                netconf, sn, pw, true);
+  }
+
+  // proxy mode.
   if (want_restart && !want_proxy) {
     return make_error("--restart-proxy requires --http-proxy.");
   }
@@ -413,12 +457,15 @@ fn edit(cli::cli &&cli) -> error_or<ok> {
     // Resolve the host-reachable namespace IP for the proxy label and the
     // message, so both show the address to connect to rather than 0.0.0.0.
     std::string ns_ip;
+    std::string default_iface;
     network_configurator netconf{ns, subnet{0}};
     if (!netconf.load().is_err()) {
       ns_ip = subnet{netconf.get_subnet_octet()}.ns_ip();
+      default_iface = std::string{netconf.get_default_iface()};
     }
 
-    proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend, ns_ip));
+    proxy_pid =
+        unwrap(s.spawn_proxy(proxy_bind, proxy_backend, ns_ip, default_iface));
     s.set_proxy_pid(proxy_pid);
     s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
     s.set_proxy_backend(proxy_backend);

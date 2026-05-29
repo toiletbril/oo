@@ -14,7 +14,7 @@ cleanup() {
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-if "$BIN" $FLAGS up "$NS" --dns-file="$LINK" -- sleep 1; then
+if "$BIN" $FLAGS up -d "$NS" --dns-file="$LINK" -- sleep 1; then
   echo "dns-file symlink: accepted (FAILED)"
 else
   echo "dns-file symlink: rejected (ok)"

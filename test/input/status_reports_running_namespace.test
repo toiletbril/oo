@@ -10,7 +10,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 30
+"$BIN" $FLAGS up -d "$NS" -- sleep 30
 
 DETAIL=$("$BIN" status "$NS" 2>&1)
 if echo "$DETAIL" | grep -q "Daemon PID"; then
@@ -25,7 +25,7 @@ else
 fi
 
 LIST=$("$BIN" status 2>&1)
-if echo "$LIST" | grep -qE "${NS}: daemon alive"; then
+if echo "$LIST" | grep -qE "${NS}: daemon is alive"; then
   echo "list shows namespace (ok)"
 else
   echo "list shows namespace (FAILED)"

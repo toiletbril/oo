@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify that `oo edit --relaunch-daemon --set-name` moves the namespace to the
+# Verify that `oo touch --relaunch-daemon --set-name` moves the namespace to the
 # new name, keeps the subnet, transfers pool ownership, and leaves the old name
 # not running.
 
@@ -14,10 +14,10 @@ cleanup() {
 "$BIN" $FLAGS down "$NEW" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$OLD" -- sleep 30
+"$BIN" $FLAGS up -d "$OLD" -- sleep 30
 OLD_OCTET=$(grep '^subnet_octet=' "/var/run/oo/$OLD/network.ini" | cut -d= -f2)
 
-"$BIN" $FLAGS edit "$OLD" --relaunch-daemon --set-name="$NEW" -- sleep 30
+"$BIN" $FLAGS touch -d "$OLD" --relaunch-daemon --set-name="$NEW" -- sleep 30
 sleep 1
 
 if [ ! -d "/var/run/oo/$OLD" ]; then

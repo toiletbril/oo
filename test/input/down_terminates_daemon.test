@@ -9,7 +9,7 @@ cleanup() { "$BIN" $FLAGS down "$NS" || true; }
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" -- sleep 30
+"$BIN" $FLAGS up -d "$NS" -- sleep 30
 
 DAEMON_PID=$(grep '^daemon_pid=' "/var/run/oo/$NS/pids.ini" | cut -d= -f2)
 

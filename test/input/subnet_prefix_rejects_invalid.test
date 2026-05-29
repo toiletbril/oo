@@ -11,7 +11,7 @@ trap cleanup EXIT
 check_rejected() {
   label=$1
   shift
-  if "$BIN" $FLAGS up "$@" -- sleep 0; then
+  if "$BIN" $FLAGS up -d "$@" -- sleep 0; then
     echo "$label: accepted (FAILED)"
   else
     echo "$label: rejected (ok)"

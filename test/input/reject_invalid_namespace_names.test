@@ -6,7 +6,7 @@
 check_rejected() {
   label=$1
   shift
-  if "$BIN" $FLAGS up "$@"; then
+  if "$BIN" $FLAGS up -d "$@"; then
     echo "$label: accepted (FAILED)"
   else
     echo "$label: rejected (ok)"

@@ -70,8 +70,8 @@ fn summarize(const std::string &name) -> std::string {
                                    s.get_proxy_pid(), s.get_proxy_start_time());
 
   std::string line = name;
-  line += daemon_alive ? ": daemon alive" : ": daemon stale";
-  line += proxy_alive ? ", proxy alive" : ", no proxy";
+  line += daemon_alive ? ": daemon is alive" : ": daemon is dead";
+  line += proxy_alive ? ", proxy is alive" : ", no proxy";
 
   network_configurator netconf{ns, subnet{0}};
   if (!netconf.load().is_err()) {
@@ -126,8 +126,7 @@ fn list_all() -> error_or<ok> {
 } // namespace
 
 fn status(cli::cli &&cli) -> error_or<ok> {
-  cli.add_use_case("oo status [<namespace>]",
-                   "Show the state of one namespace, or list all of them.");
+  cli.add_use_case("oo status [namespace]", "Show namespace state.");
 
   let &flag_help = cli.add_flag<cli::flag_boolean>('\0', "help", "Print help.");
 

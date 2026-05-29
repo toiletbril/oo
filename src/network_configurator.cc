@@ -201,6 +201,7 @@ fn network_configurator::save() const -> error_or<ok> {
            std::to_string(static_cast<u32>(m_subnet.get_prefix_len())));
   file.set("veth_host", std::string{m_netlinker.get_veth_host_name()});
   file.set("veth_ns", std::string{m_netlinker.get_veth_ns_name()});
+  file.set("default_iface", m_default_iface);
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved network state to {}", net_path.string());
@@ -226,6 +227,7 @@ fn network_configurator::load() -> error_or<ok> {
   u8 subnet_octet = 0;
   u8 subnet_prefix = constants::DEFAULT_SUBNET_PREFIX_LEN;
   std::string veth_host;
+  std::string default_iface;
 
   if (let v = file.find("subnet_octet")) {
     let parsed = unwrap(parse_u64_field("subnet_octet", *v));
@@ -247,9 +249,13 @@ fn network_configurator::load() -> error_or<ok> {
   if (let v = file.find("veth_host")) {
     veth_host = *v;
   }
+  if (let v = file.find("default_iface")) {
+    default_iface = *v;
+  }
 
   m_subnet = subnet{subnet_octet, subnet_prefix};
   m_netlinker.set_veth_host_name(veth_host);
+  m_default_iface = default_iface;
 
   trace(verbosity::debug, "Loaded network state from {}", net_path.string());
 

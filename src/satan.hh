@@ -44,8 +44,11 @@ public:
   // `reachable_ip` is the namespace IP the proxy is reachable at from the host.
   // It is shown in the process name so the usable listen address can be copied
   // straight from a process list, since the actual bind is 0.0.0.0.
+  // `default_route` is the host interface the namespace NATs out through,
+  // shown in the process name so a process list ties the proxy to its egress.
   [[nodiscard]] fn spawn_proxy(const endpoint &bind, proxy_backend_kind kind,
-                               std::string_view reachable_ip)
+                               std::string_view reachable_ip,
+                               std::string_view default_route)
       -> error_or<pid_t>;
 
   [[nodiscard]] fn save() const -> error_or<ok>;
@@ -95,8 +98,6 @@ private:
   static constexpr const char *PID_FILE = "pids.ini";
   static constexpr const char *STDOUT_LOG = "stdout";
   static constexpr const char *STDERR_LOG = "stderr";
-  static constexpr const char *PROXY_STDOUT_LOG = "proxy-stdout";
-  static constexpr const char *PROXY_STDERR_LOG = "proxy-stderr";
 };
 
 } // namespace oo

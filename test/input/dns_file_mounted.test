@@ -17,7 +17,7 @@ cleanup() {
 "$BIN" $FLAGS down "$NS" || true
 trap cleanup EXIT
 
-"$BIN" $FLAGS up "$NS" --dns-file="$WORK" -- sleep 3
+"$BIN" $FLAGS up -d "$NS" --dns-file="$WORK" -- sleep 3
 
 if grep -q '^nameserver 9\.9\.9\.9$' "/var/run/oo/$NS/resolv.conf"; then
   echo "dns-file contents used (ok)"
