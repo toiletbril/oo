@@ -2,6 +2,7 @@
 
 #include "cli.hh"
 #include "constants.hh"
+#include "debug.hh"
 #include "ip_pool.hh"
 #include "linux_namespace.hh"
 #include "network_configurator.hh"
@@ -28,6 +29,7 @@ fn pid_state(pid_t pid, u64 start_time) -> std::string {
 // process state. The network state is loaded here for the subnet IPs and is
 // reported as unknown when it cannot be read.
 fn describe(const std::string &name, satan &s) -> std::string {
+  trace(verbosity::debug, "Reading full state of namespace `{}`", name);
   std::string out = "Namespace `" + name + "`\n";
   out += "  Daemon PID:   " +
          pid_state(s.get_daemon_pid(), s.get_daemon_start_time()) + "\n";
@@ -42,6 +44,7 @@ fn describe(const std::string &name, satan &s) -> std::string {
 
   linux_namespace ns{name};
   network_configurator netconf{ns, subnet{0}};
+  trace(verbosity::debug, "Loading network config for namespace `{}`", name);
   if (netconf.load().is_err()) {
     out += "  Subnet:       unknown";
     return out;
@@ -56,6 +59,7 @@ fn describe(const std::string &name, satan &s) -> std::string {
 // Render one summary line for the listing. Reports a stale marker when the
 // directory has no readable process state.
 fn summarize(const std::string &name) -> std::string {
+  trace(verbosity::debug, "Loading process state for namespace `{}`", name);
   linux_namespace ns{name};
   passwd pw;
   satan s{ns, pw};
@@ -83,6 +87,9 @@ fn summarize(const std::string &name) -> std::string {
 }
 
 fn list_all() -> error_or<ok> {
+  trace(verbosity::info, "Enumerating namespaces under {}",
+        constants::OO_RUN_DIR);
+
   std::error_code ec;
   if (!std::filesystem::exists(constants::OO_RUN_DIR, ec) || ec) {
     cli::show_message("No namespaces.");
@@ -145,6 +152,7 @@ fn status(cli::cli &&cli) -> error_or<ok> {
   linux_namespace ns{ns_name};
   passwd pw;
   satan s{ns, pw};
+  trace(verbosity::info, "Loading process state for namespace `{}`", ns_name);
   if (s.load().is_err()) {
     return make_error("Namespace '" + ns_name + "' is not running");
   }

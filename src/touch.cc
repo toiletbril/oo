@@ -208,6 +208,9 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
     linux_namespace target_ns{new_name};
     unwrap(target_ns.validate_name());
 
+    trace(verbosity::info, "Relaunching namespace `{}` as `{}`", old_name,
+          new_name);
+
     passwd pw;
     satan old_s{old_ns, pw};
     if (old_s.load().is_err()) {
@@ -264,6 +267,8 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
     // anything is destroyed. If the reassign fails, the old namespace and its
     // subnet allocation are still intact rather than orphaned.
     if (new_name != old_name) {
+      trace(verbosity::info, "Reassigning subnet from `{}` to `{}`", old_name,
+            new_name);
       ip_pool pool{target_ns};
       unwrap(pool.reassign(subnet{keep_octet}, old_name));
     }
@@ -271,6 +276,8 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
     // Tear down the old network and directory under the old name. The subnet
     // allocation is intentionally kept so the rebuilt namespace reuses the same
     // IP.
+    trace(verbosity::info, "Tearing down old network for namespace `{}`",
+          old_name);
     unused(old_ns.reset(old_netconf));
 
     const subnet sn{keep_octet, subnet_prefix};
@@ -318,6 +325,7 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
     });
 
     satan s{target_ns, pw};
+    trace(verbosity::info, "Spawning daemon in namespace `{}`", new_name);
     daemon_pid =
         unwrap(s.spawn_daemon(daemon_argv, start_cwd, resolv_path,
                               nsswitch_path, flag_no_daemon_dns.is_enabled()));
@@ -335,6 +343,7 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
           unused(linux::oo_kill(-proxy_pid, SIGKILL));
         }
       });
+      trace(verbosity::info, "Spawning proxy in namespace `{}`", new_name);
       proxy_pid = unwrap(s.spawn_proxy(proxy_bind, proxy_backend, sn.ns_ip(),
                                        netconf.get_default_iface()));
       s.set_proxy_pid(proxy_pid);
@@ -374,6 +383,7 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
   // its log files to this terminal, and tear the namespace down when the
   // daemon exits.
   if (want_attach) {
+    trace(verbosity::info, "Attaching to daemon of namespace `{}`", ns_name);
     linux_namespace ns{ns_name};
     unwrap(ns.validate_name());
     passwd pw;
@@ -464,6 +474,7 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
       default_iface = std::string{netconf.get_default_iface()};
     }
 
+    trace(verbosity::info, "Spawning proxy in namespace `{}`", ns_name);
     proxy_pid =
         unwrap(s.spawn_proxy(proxy_bind, proxy_backend, ns_ip, default_iface));
     s.set_proxy_pid(proxy_pid);
