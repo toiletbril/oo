@@ -509,6 +509,7 @@ fn satan::save() const -> error_or<ok> {
   file.set("proxy_start_time", std::to_string(m_proxy_start_time));
   file.set("proxy_backend",
            m_proxy_backend == proxy_backend_kind::squid ? "squid" : "builtin");
+  file.set("creator_uid", std::to_string(m_creator_uid));
   unwrap(file.flush());
 
   trace(verbosity::debug, "Saved process state to {}", pid_path.string());
@@ -562,6 +563,11 @@ fn satan::load() -> error_or<ok> {
       m_proxy_backend = b.get_value();
     }
   }
+  if (let v = file.find("creator_uid")) {
+    insist(!v->empty(), "creator_uid entry must have a non-empty value");
+    m_creator_uid =
+        static_cast<uid_t>(unwrap(parse_u64_field("creator_uid", *v)));
+  }
 
   trace(verbosity::debug, "Loaded process state from {}", pid_path.string());
 
@@ -610,6 +616,14 @@ fn satan::sweep_orphans() -> error_or<ok> {
     }
 
     if (!orphan) {
+      continue;
+    }
+
+    // Only the owner, or root, reaps an orphan. This stops one user's sweep,
+    // triggered by an unrelated up or down, from moving another user's stale
+    // namespace out from under them. A namespace whose state did not load has
+    // no recorded owner, so a non-root sweeper leaves it for root.
+    if (!probe.is_accessible_by(m_pw.get_invoking_uid())) {
       continue;
     }
 
@@ -700,6 +714,11 @@ fn satan::execute(const std::vector<std::string> &argv,
 
   if (let r = load(); r.is_err()) {
     return make_error("Namespace '" + m_ns.get_name() + "' is not running");
+  }
+
+  if (!is_accessible_by(m_pw.get_invoking_uid())) {
+    return make_error("Namespace '" + m_ns.get_name() +
+                      "' is owned by another user");
   }
 
   if (m_daemon_pid == 0) {

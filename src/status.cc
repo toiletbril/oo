@@ -11,6 +11,7 @@
 #include "satan.hh"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace oo {
@@ -56,15 +57,24 @@ fn describe(const std::string &name, satan &s) -> std::string {
   return out;
 }
 
-// Render one summary line for the listing. Reports a stale marker when the
-// directory has no readable process state.
-fn summarize(const std::string &name) -> std::string {
+// Render one summary line for the listing, or nothing when the caller may not
+// see this namespace. Reports a stale marker when the directory has no readable
+// process state. A stale directory has no recorded owner, so only root sees it.
+fn summarize(const std::string &name, uid_t invoking_uid)
+    -> std::optional<std::string> {
   trace(verbosity::debug, "Loading process state for namespace `{}`", name);
   linux_namespace ns{name};
   passwd pw;
   satan s{ns, pw};
   if (s.load().is_err()) {
+    if (invoking_uid != 0) {
+      return std::nullopt;
+    }
     return name + ": stale (no state)";
+  }
+
+  if (!s.is_accessible_by(invoking_uid)) {
+    return std::nullopt;
   }
 
   const bool daemon_alive = pid_tracker::is_alive_with_start_time(
@@ -90,6 +100,10 @@ fn list_all() -> error_or<ok> {
   trace(verbosity::info, "Enumerating namespaces under {}",
         constants::OO_RUN_DIR);
 
+  // status never elevates, so the real invoking uid is the live process uid.
+  // Root sees every namespace; a normal user sees only the ones they own.
+  const uid_t invoking_uid = ::getuid();
+
   std::error_code ec;
   if (!std::filesystem::exists(constants::OO_RUN_DIR, ec) || ec) {
     cli::show_message("No namespaces.");
@@ -112,8 +126,10 @@ fn list_all() -> error_or<ok> {
   while (it != end) {
     std::error_code st_ec;
     if (it->is_directory(st_ec) && !st_ec) {
-      any = true;
-      cli::show_message(summarize(it->path().filename().string()));
+      if (let line = summarize(it->path().filename().string(), invoking_uid)) {
+        any = true;
+        cli::show_message(*line);
+      }
     }
     it.increment(it_ec);
     if (it_ec) {
@@ -155,6 +171,10 @@ fn status(cli::cli &&cli) -> error_or<ok> {
   trace(verbosity::info, "Loading process state for namespace `{}`", ns_name);
   if (s.load().is_err()) {
     return make_error("Namespace '" + ns_name + "' is not running");
+  }
+
+  if (!s.is_accessible_by(pw.get_invoking_uid())) {
+    return make_error("Namespace '" + ns_name + "' is owned by another user");
   }
 
   cli::show_message(describe(ns_name, s));

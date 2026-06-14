@@ -117,7 +117,9 @@ command's own exit code:
 $ oo exec vpn -- curl https://example.com
 ```
 
-To see the state of every namespace, or of one in particular, use `status`:
+To see the state of your namespaces, or of one in particular, use `status`. A
+normal user sees only the namespaces they created, while root sees every
+namespace.
 ```console
 $ oo status
 vpn: daemon is alive, proxy is alive, 10.0.0.2
@@ -175,7 +177,7 @@ Runtime directory layout and permissions:
 
 ```
 /var/run/oo/        oorunner:oorunner 0755 (only oo can create entries)
-/var/run/oo/<name>/ oorunner:oorunner 0700 (only creator can access)
+/var/run/oo/<name>/ oorunner:oorunner 0755 (oo limits actions to the owner or root)
 ```
 
 ## Development

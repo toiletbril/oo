@@ -61,6 +61,11 @@ static fn raise_effective_caps() -> error_or<ok> {
   return ok{};
 }
 
+passwd::passwd() : m_invoking_uid(::getuid()), m_invoking_gid(::getgid()) {
+  trace(verbosity::debug, "Captured invoking credentials (uid={}, gid={})",
+        m_invoking_uid, m_invoking_gid);
+}
+
 fn passwd::su_oorunner() -> error_or<ok> {
   insist(!m_captured,
          "passwd::su_oorunner must be called at most once per instance");

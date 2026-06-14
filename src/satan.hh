@@ -82,6 +82,16 @@ public:
   }
   fn set_proxy_backend(proxy_backend_kind k) -> void { m_proxy_backend = k; }
 
+  [[nodiscard]] fn get_creator_uid() const -> uid_t { return m_creator_uid; }
+  fn set_creator_uid(uid_t uid) -> void { m_creator_uid = uid; }
+
+  // Root always passes. A normal user passes only when their uid matches the
+  // recorded creator. Namespaces created before ownership tracking carry the
+  // unknown sentinel, which matches no real user, so they are root-only.
+  [[nodiscard]] fn is_accessible_by(uid_t invoking_uid) const -> bool {
+    return invoking_uid == 0 || invoking_uid == m_creator_uid;
+  }
+
 private:
   linux_namespace &m_ns;
   passwd &m_pw;
@@ -92,6 +102,7 @@ private:
   pid_t m_proxy_pid{0};
   u64 m_proxy_start_time{0};
   proxy_backend_kind m_proxy_backend{proxy_backend_kind::builtin};
+  uid_t m_creator_uid{static_cast<uid_t>(-1)};
 
   fn enter_namespace(pid_t daemon_pid, pid_t inner_pid) -> error_or<ok>;
 

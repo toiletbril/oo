@@ -21,7 +21,10 @@ namespace oo {
 // (drop_all_caps / drop_all_caps_except) itself immediately after.
 class passwd {
 public:
-  passwd() = default;
+  // Capture the real invoking uid/gid at construction, before any identity
+  // switch, so get_invoking_uid stays valid even in commands that read state
+  // before they call su_oorunner.
+  passwd();
 
   passwd(const passwd &) = delete;
   passwd &operator=(const passwd &) = delete;

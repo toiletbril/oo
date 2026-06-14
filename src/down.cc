@@ -61,6 +61,10 @@ fn down(cli::cli &&cli) -> error_or<ok> {
     return make_error("Namespace '" + ns_name + "' is not running");
   }
 
+  if (!s.is_accessible_by(pw.get_invoking_uid())) {
+    return make_error("Namespace '" + ns_name + "' is owned by another user");
+  }
+
   network_configurator netconf{ns, subnet{0}};
   if (let r = netconf.load(); r.is_err()) {
     return make_error("Namespace '" + ns_name + "' is not running");

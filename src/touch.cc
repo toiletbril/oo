@@ -217,6 +217,11 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
       return make_error("Namespace '" + old_name + "' is not running");
     }
 
+    if (!old_s.is_accessible_by(pw.get_invoking_uid())) {
+      return make_error("Namespace '" + old_name +
+                        "' is owned by another user");
+    }
+
     network_configurator old_netconf{old_ns, subnet{0}};
     if (old_netconf.load().is_err()) {
       return make_error("Namespace '" + old_name + "' is not running");
@@ -351,6 +356,10 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
       s.set_proxy_backend(proxy_backend);
     }
 
+    // The relauncher is the verified owner of the old namespace, so stamp the
+    // invoking uid onto the new state to preserve ownership across a rename.
+    s.set_creator_uid(pw.get_invoking_uid());
+
     unwrap(s.save());
     unwrap(netconf.save());
 
@@ -391,6 +400,9 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
     if (s.load().is_err()) {
       return make_error("Namespace '" + ns_name + "' is not running");
     }
+    if (!s.is_accessible_by(pw.get_invoking_uid())) {
+      return make_error("Namespace '" + ns_name + "' is owned by another user");
+    }
     if (!pid_tracker::is_alive_with_start_time(s.get_daemon_pid(),
                                                s.get_daemon_start_time())) {
       return make_error("Namespace '" + ns_name + "' is not running");
@@ -426,6 +438,10 @@ fn touch(cli::cli &&cli) -> error_or<ok> {
   satan s{ns, pw};
   if (s.load().is_err()) {
     return make_error("Namespace '" + ns_name + "' is not running");
+  }
+
+  if (!s.is_accessible_by(pw.get_invoking_uid())) {
+    return make_error("Namespace '" + ns_name + "' is owned by another user");
   }
 
   const bool daemon_alive = pid_tracker::is_alive_with_start_time(

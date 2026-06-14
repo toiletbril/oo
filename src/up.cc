@@ -149,6 +149,13 @@ fn up(cli::cli &&cli) -> error_or<ok> {
 
   satan existing_satan{ns, pw};
   if (!existing_satan.load().is_err()) {
+    // Refuse before the liveness check and the stale cleanup below, so a
+    // non-owner can neither learn the daemon state of another user's namespace
+    // nor destroy its stale directory by reusing the name.
+    if (!existing_satan.is_accessible_by(pw.get_invoking_uid())) {
+      return make_error("Namespace '" + ns_name + "' is owned by another user");
+    }
+
     if (pid_tracker::is_alive_with_start_time(
             existing_satan.get_daemon_pid(),
             existing_satan.get_daemon_start_time())) {
@@ -256,6 +263,8 @@ fn up(cli::cli &&cli) -> error_or<ok> {
     s.set_proxy_start_time(unwrap(pid_tracker::read_start_time(proxy_pid)));
     s.set_proxy_backend(proxy_backend);
   }
+
+  s.set_creator_uid(pw.get_invoking_uid());
 
   unwrap(s.save());
   unwrap(netconf.save());
